@@ -1,0 +1,5 @@
+{
+  "name": "Victron Charge Controller Card",
+  "render_install_method": "yaml",
+  "filename": "victron-charge-controller-card.js"
+}
