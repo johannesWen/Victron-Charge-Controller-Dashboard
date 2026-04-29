@@ -1,0 +1,3 @@
+[submodule "submodule/Victron-Charge-Controller"]
+	path = submodule/Victron-Charge-Controller
+	url = https://github.com/johannesWen/Victron-Charge-Controller
