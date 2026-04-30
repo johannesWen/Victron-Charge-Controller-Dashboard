@@ -141,7 +141,7 @@ class VictronChargeControllerCard extends LitElement {
     });
   }
 
-  _extractEpexPrices(attrs) {
+  _extractEpexPrices(attrs, targetDate) {
     // Find the EPEX data list from entity attributes
     let rawData = null;
     if (Array.isArray(attrs.data) && attrs.data.length > 0) {
@@ -159,8 +159,8 @@ class VictronChargeControllerCard extends LitElement {
     }
     if (!rawData) return {};
 
-    const now = new Date();
-    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const d = targetDate || new Date();
+    const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     const priceMap = {};
     for (const item of rawData) {
       const st = item.start_time;
@@ -175,7 +175,7 @@ class VictronChargeControllerCard extends LitElement {
       }
       if (isNaN(dt.getTime())) continue;
       const itemDate = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
-      if (itemDate !== todayStr) continue;
+      if (itemDate !== dateStr) continue;
       // Extract price in ct/kWh
       let price = item.price_ct_per_kwh;
       if (price === undefined || price === null) {
@@ -384,6 +384,121 @@ class VictronChargeControllerCard extends LitElement {
       </div>`;
   }
 
+  // ── Shared chart renderer ────────────────────────────────
+
+  _renderPriceChart(enrichedPlan, { showCurrentHour = false, startHour = 0 } = {}) {
+    // Extract prices and determine scale
+    const prices = enrichedPlan.map(p => p.price ?? null);
+    const validPrices = prices.filter(p => p !== null);
+    if (validPrices.length === 0) return null;
+
+    const minPrice = Math.min(...validPrices);
+    const maxPrice = Math.max(...validPrices);
+    const priceRange = maxPrice - minPrice || 1;
+    const scaleMin = Math.floor(minPrice - priceRange * 0.1);
+    const scaleMax = Math.ceil(maxPrice + priceRange * 0.1);
+    const scaleRange = scaleMax - scaleMin || 1;
+
+    const currentHour = new Date().getHours();
+
+    // SVG dimensions
+    const chartW = 600;
+    const chartH = 260;
+    const padL = 50;
+    const padR = 10;
+    const padT = 25;
+    const padB = 30;
+    const plotW = chartW - padL - padR;
+    const plotH = chartH - padT - padB;
+    const barW = plotW / 24;
+    const barGap = 2;
+
+    const actionColor = (action) => {
+      switch (action) {
+        case 'charge':              return 'var(--vcc-success, #4caf50)';
+        case 'discharge':           return 'var(--vcc-warning, #ff9800)';
+        case 'blocked':
+        case 'blocked_charging':
+        case 'blocked_discharging': return 'var(--vcc-error, #f44336)';
+        default:                    return 'var(--vcc-disabled, #bdbdbd)';
+      }
+    };
+
+    const yPos = (price) => padT + plotH - ((price - scaleMin) / scaleRange) * plotH;
+    const zeroInRange = scaleMin <= 0 && scaleMax >= 0;
+
+    const tickCount = 5;
+    const yTicks = Array.from({ length: tickCount + 1 }, (_, i) => {
+      const val = scaleMin + (scaleRange * i) / tickCount;
+      return { val: Math.round(val * 10) / 10, y: yPos(scaleMin + (scaleRange * i) / tickCount) };
+    });
+
+    return svg`
+      <svg class="plan-chart" viewBox="0 0 ${chartW} ${chartH}" preserveAspectRatio="xMidYMid meet">
+        <!-- Grid lines -->
+        ${yTicks.map(t => svg`
+          <line x1="${padL}" y1="${t.y}" x2="${chartW - padR}" y2="${t.y}"
+            stroke="var(--vcc-border, #e0e0e0)" stroke-width="0.5"
+            stroke-dasharray="${t.val === 0 ? 'none' : '4,3'}" />
+        `)}
+
+        <!-- Zero line (bold) -->
+        ${zeroInRange ? svg`
+          <line x1="${padL}" y1="${yPos(0)}" x2="${chartW - padR}" y2="${yPos(0)}"
+            stroke="var(--vcc-text2, #757575)" stroke-width="1" />
+        ` : nothing}
+
+        <!-- Bars -->
+        ${enrichedPlan.map((entry, i) => {
+          const price = entry.price;
+          if (price === null || price === undefined) return nothing;
+          const x = padL + i * barW + barGap / 2;
+          const w = barW - barGap;
+          const barTop = yPos(price);
+          const barBase = zeroInRange ? yPos(0) : padT + plotH;
+          const barY = Math.min(barTop, barBase);
+          const barH = Math.abs(barTop - barBase) || 1;
+          const isPast = i < startHour;
+          const isCurrent = showCurrentHour && i === currentHour;
+          return svg`
+            <rect
+              x="${x}" y="${barY}" width="${w}" height="${barH}"
+              fill="${isPast ? actionColor('idle') : actionColor(entry.action)}"
+              opacity="${isPast ? 0.35 : (isCurrent ? 1 : 0.7)}"
+              rx="1.5"
+            />
+            ${isCurrent ? svg`
+              <rect x="${x - 1}" y="${padT}" width="${w + 2}" height="${plotH}"
+                fill="none" stroke="var(--vcc-accent, #03a9f4)"
+                stroke-width="1.5" stroke-dasharray="4,3" rx="2" />
+            ` : nothing}
+          `;
+        })}
+
+        <!-- Y-axis labels -->
+        ${yTicks.map(t => svg`
+          <text x="${padL - 6}" y="${t.y + 3.5}" text-anchor="end"
+            class="plan-axis-label">${t.val}</text>
+        `)}
+
+        <!-- Y-axis unit -->
+        <text x="${padL - 6}" y="${padT - 12}" text-anchor="end"
+          class="plan-axis-unit">ct/kWh</text>
+
+        <!-- X-axis labels (every 2 hours) -->
+        ${enrichedPlan.map((entry, i) => {
+          if (i % 2 !== 0 && !(showCurrentHour && i === currentHour)) return nothing;
+          const x = padL + i * barW + barW / 2;
+          return svg`
+            <text x="${x}" y="${chartH - 6}" text-anchor="middle"
+              class="plan-axis-label ${showCurrentHour && i === currentHour ? 'plan-current-hour' : ''}"
+            >${String(i).padStart(2, '0')}</text>
+          `;
+        })}
+      </svg>
+    `;
+  }
+
   // ── Plan view ────────────────────────────────────────────
 
   _renderPlanView() {
@@ -398,25 +513,41 @@ class VictronChargeControllerCard extends LitElement {
         </div>`;
     }
 
-    // Check if plan entries have prices; if not, try to extract from current_price sensor attributes
-    let enrichedPlan = plan;
+    const priceEntity = this._state('sensor', 'current_price');
+    const attrs = priceEntity?.attributes || {};
+
+    // --- Today chart ---
+    let todayPlan = plan;
     const hasPrices = plan.some(p => p.price !== undefined && p.price !== null);
     if (!hasPrices) {
-      const priceEntity = this._state('sensor', 'current_price');
-      const attrs = priceEntity?.attributes || {};
       const priceMap = this._extractEpexPrices(attrs);
       if (Object.keys(priceMap).length > 0) {
-        enrichedPlan = plan.map(p => ({
+        todayPlan = plan.map(p => ({
           ...p,
           price: priceMap[p.hour] ?? null,
         }));
       }
     }
 
-    // Extract prices and determine scale
-    const prices = enrichedPlan.map(p => p.price ?? null);
-    const validPrices = prices.filter(p => p !== null);
-    if (validPrices.length === 0) {
+    const currentHour = new Date().getHours();
+    const todayChart = this._renderPriceChart(todayPlan, { showCurrentHour: true, startHour: currentHour });
+
+    // --- Tomorrow chart ---
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowPriceMap = this._extractEpexPrices(attrs, tomorrow);
+    const hasTomorrowPrices = Object.keys(tomorrowPriceMap).length > 0;
+
+    let tomorrowChart = null;
+    if (hasTomorrowPrices) {
+      const tomorrowPlan = plan.map(p => ({
+        ...p,
+        price: tomorrowPriceMap[p.hour] ?? null,
+      }));
+      tomorrowChart = this._renderPriceChart(tomorrowPlan);
+    }
+
+    if (!todayChart && !tomorrowChart) {
       return html`
         <div class="warning">
           <ha-icon icon="mdi:alert-outline"></ha-icon>
@@ -424,116 +555,19 @@ class VictronChargeControllerCard extends LitElement {
         </div>`;
     }
 
-    const minPrice = Math.min(...validPrices);
-    const maxPrice = Math.max(...validPrices);
-    const priceRange = maxPrice - minPrice || 1;
-    // Add padding to scale
-    const scaleMin = Math.floor(minPrice - priceRange * 0.1);
-    const scaleMax = Math.ceil(maxPrice + priceRange * 0.1);
-    const scaleRange = scaleMax - scaleMin || 1;
-
-    const currentHour = new Date().getHours();
-
-    // SVG dimensions
-    const chartW = 600;
-    const chartH = 250;
-    const padL = 50;  // left padding for Y-axis labels
-    const padR = 10;
-    const padT = 15;
-    const padB = 30;  // bottom padding for X-axis labels
-    const plotW = chartW - padL - padR;
-    const plotH = chartH - padT - padB;
-    const barW = plotW / 24;
-    const barGap = 2;
-
-    // Map action → color
-    const actionColor = (action) => {
-      switch (action) {
-        case 'charge':              return 'var(--vcc-success, #4caf50)';
-        case 'discharge':           return 'var(--vcc-warning, #ff9800)';
-        case 'blocked':
-        case 'blocked_charging':
-        case 'blocked_discharging': return 'var(--vcc-error, #f44336)';
-        default:                    return 'var(--vcc-disabled, #bdbdbd)';
-      }
-    };
-
-    // Y position helper
-    const yPos = (price) => padT + plotH - ((price - scaleMin) / scaleRange) * plotH;
-
-    // Zero line position (if zero is in range)
-    const zeroInRange = scaleMin <= 0 && scaleMax >= 0;
-
-    // Y-axis ticks (5 ticks)
-    const tickCount = 5;
-    const yTicks = Array.from({ length: tickCount + 1 }, (_, i) => {
-      const val = scaleMin + (scaleRange * i) / tickCount;
-      return { val: Math.round(val * 10) / 10, y: yPos(scaleMin + (scaleRange * i) / tickCount) };
-    });
-
     return html`
       <div class="plan-chart-container">
-        <svg class="plan-chart" viewBox="0 0 ${chartW} ${chartH}" preserveAspectRatio="xMidYMid meet">
-          <!-- Grid lines -->
-          ${yTicks.map(t => svg`
-            <line x1="${padL}" y1="${t.y}" x2="${chartW - padR}" y2="${t.y}"
-              stroke="var(--vcc-border, #e0e0e0)" stroke-width="0.5"
-              stroke-dasharray="${t.val === 0 ? 'none' : '4,3'}" />
-          `)}
+        ${todayChart ? html`
+          <div class="plan-chart-label">Today</div>
+          ${todayChart}
+        ` : nothing}
 
-          <!-- Zero line (bold) -->
-          ${zeroInRange ? svg`
-            <line x1="${padL}" y1="${yPos(0)}" x2="${chartW - padR}" y2="${yPos(0)}"
-              stroke="var(--vcc-text2, #757575)" stroke-width="1" />
-          ` : nothing}
-
-          <!-- Bars -->
-          ${enrichedPlan.map((entry, i) => {
-            const price = entry.price;
-            if (price === null || price === undefined) return nothing;
-            const x = padL + i * barW + barGap / 2;
-            const w = barW - barGap;
-            const barTop = yPos(price);
-            const barBase = zeroInRange ? yPos(0) : padT + plotH;
-            const barY = Math.min(barTop, barBase);
-            const barH = Math.abs(barTop - barBase) || 1;
-            const isCurrent = i === currentHour;
-            return svg`
-              <rect
-                x="${x}" y="${barY}" width="${w}" height="${barH}"
-                fill="${actionColor(entry.action)}"
-                opacity="${isCurrent ? 1 : 0.7}"
-                rx="1.5"
-              />
-              ${isCurrent ? svg`
-                <rect x="${x - 1}" y="${padT}" width="${w + 2}" height="${plotH}"
-                  fill="none" stroke="var(--vcc-accent, #03a9f4)"
-                  stroke-width="1.5" stroke-dasharray="4,3" rx="2" />
-              ` : nothing}
-            `;
-          })}
-
-          <!-- Y-axis labels -->
-          ${yTicks.map(t => svg`
-            <text x="${padL - 6}" y="${t.y + 3.5}" text-anchor="end"
-              class="plan-axis-label">${t.val}</text>
-          `)}
-
-          <!-- Y-axis unit -->
-          <text x="${padL - 6}" y="${padT - 4}" text-anchor="end"
-            class="plan-axis-unit">ct/kWh</text>
-
-          <!-- X-axis labels (every 2 hours) -->
-          ${enrichedPlan.map((entry, i) => {
-            if (i % 2 !== 0 && i !== currentHour) return nothing;
-            const x = padL + i * barW + barW / 2;
-            return svg`
-              <text x="${x}" y="${chartH - 6}" text-anchor="middle"
-                class="plan-axis-label ${i === currentHour ? 'plan-current-hour' : ''}"
-              >${String(i).padStart(2, '0')}</text>
-            `;
-          })}
-        </svg>
+        ${tomorrowChart ? html`
+          <div class="plan-chart-label">Tomorrow</div>
+          ${tomorrowChart}
+        ` : html`
+          <div class="plan-chart-label plan-chart-label-muted">Tomorrow — prices not yet available</div>
+        `}
 
         <!-- Legend -->
         <div class="plan-legend">
@@ -838,11 +872,11 @@ class VictronChargeControllerCard extends LitElement {
         font-family: inherit;
       }
       .plan-axis-label {
-        font-size: 9px;
+        font-size: 14px;
         fill: var(--vcc-text2, #757575);
       }
       .plan-axis-unit {
-        font-size: 8px;
+        font-size: 14px;
         fill: var(--vcc-text2, #757575);
       }
       .plan-current-hour {
@@ -864,6 +898,17 @@ class VictronChargeControllerCard extends LitElement {
       .plan-legend-dot-current {
         background: none;
         border: 1.5px dashed var(--vcc-accent, #03a9f4);
+      }
+      .plan-chart-label {
+        font-size: 0.85em;
+        font-weight: 600;
+        color: var(--vcc-text, #212121);
+        padding: 4px 0 0;
+      }
+      .plan-chart-label-muted {
+        color: var(--vcc-text2, #757575);
+        font-weight: 400;
+        font-style: italic;
       }
     `;
   }
