@@ -395,7 +395,7 @@ class VictronChargeControllerCard extends LitElement {
       }
       .header-title {
         display: flex; align-items: center; gap: 8px;
-        font-size: 1.1em; font-weight: 500; color: var(--vcc-text);
+        font-size: 1.0em; font-weight: 500; color: var(--vcc-text);
       }
       .header-title ha-icon { color: var(--vcc-accent); --mdc-icon-size: 22px; }
 
@@ -433,7 +433,7 @@ class VictronChargeControllerCard extends LitElement {
         border-bottom: 1px solid var(--vcc-border); margin-bottom: 8px;
       }
       .section-header ha-icon { --mdc-icon-size: 16px; }
-      .section-content { display: flex; flex-direction: column; gap: 6px; }
+      .section-content { display: flex; flex-direction: column; gap: 0px; }
 
       /* ── Control rows ──────────────────────────── */
       .control-row {

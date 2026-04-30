@@ -79,6 +79,9 @@ npm run build
 
 # Watch for changes during development
 npm run watch
+
+# Run the live development server
+npm run dev
 ```
 
 The output is written to `dist/victron-charge-controller-card.js`.

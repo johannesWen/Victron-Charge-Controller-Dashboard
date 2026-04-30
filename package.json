@@ -5,7 +5,9 @@
   "main": "dist/victron-charge-controller-card.js",
   "scripts": {
     "build": "rollup -c",
-    "watch": "rollup -c --watch"
+    "watch": "rollup -c --watch",
+    "dev": "rollup -c --watch",
+    "serve": "npx serve . -l 5050 --cors"
   },
   "keywords": [
     "home-assistant",
