@@ -171,14 +171,36 @@ class VictronChargeControllerCard extends LitElement {
       <div class="control-row">
         <span class="control-label">${label}</span>
         <div class="slider-wrap">
-          <input type="range"
-            min=${min} max=${max} step=${step}
-            .value=${String(value)}
-            @change=${(e) => this._setNumber(numberKey, e.target.value)}
-          />
+          <div class="slider-container">
+            <input type="range"
+              min=${min} max=${max} step=${step}
+              .value=${String(value)}
+              @input=${(e) => this._onSliderInput(e, unit)}
+              @change=${(e) => this._onSliderChange(e, numberKey)}
+            />
+            <span class="slider-tooltip" style="display:none;"></span>
+          </div>
           <span class="slider-value">${value}${unit}</span>
         </div>
       </div>`;
+  }
+
+  _onSliderInput(e, unit) {
+    const input = e.target;
+    const tooltip = input.parentElement.querySelector('.slider-tooltip');
+    const val = input.value;
+    const min = parseFloat(input.min);
+    const max = parseFloat(input.max);
+    const pct = (val - min) / (max - min);
+    tooltip.textContent = `${val}${unit}`;
+    tooltip.style.display = 'block';
+    tooltip.style.left = `calc(${pct * 100}% + ${(0.5 - pct) * 16}px)`;
+  }
+
+  _onSliderChange(e, numberKey) {
+    const tooltip = e.target.parentElement.querySelector('.slider-tooltip');
+    tooltip.style.display = 'none';
+    this._setNumber(numberKey, e.target.value);
   }
 
   _renderHourChips(type) {
@@ -421,6 +443,7 @@ class VictronChargeControllerCard extends LitElement {
       }
       .control-label {
         font-size: 0.88em; color: var(--vcc-text); flex-shrink: 0;
+        width: 180px;
       }
 
       /* ── Mode selector ─────────────────────────── */
@@ -461,18 +484,36 @@ class VictronChargeControllerCard extends LitElement {
         display: flex; align-items: center; gap: 8px;
         flex: 1; min-width: 0;
       }
-      .slider-wrap input[type="range"] {
-        flex: 1; min-width: 0; height: 4px;
+      .slider-container {
+        position: relative; flex: 1; min-width: 0;
+        display: flex; align-items: center;
+      }
+      .slider-tooltip {
+        position: absolute; bottom: 100%; margin-bottom: 6px;
+        transform: translateX(-50%);
+        background: var(--vcc-text, #212121); color: var(--vcc-bg, #fff);
+        padding: 3px 8px; border-radius: 4px;
+        font-size: 0.75em; font-weight: 600; white-space: nowrap;
+        pointer-events: none; z-index: 1;
+      }
+      .slider-tooltip::after {
+        content: ''; position: absolute;
+        top: 100%; left: 50%; transform: translateX(-50%);
+        border: 4px solid transparent;
+        border-top-color: var(--vcc-text, #212121);
+      }
+      .slider-container input[type="range"] {
+        flex: 1; min-width: 0; height: 4px; width: 100%;
         -webkit-appearance: none; appearance: none;
         background: var(--vcc-border); border-radius: 2px; outline: none;
       }
-      .slider-wrap input[type="range"]::-webkit-slider-thumb {
+      .slider-container input[type="range"]::-webkit-slider-thumb {
         -webkit-appearance: none; width: 16px; height: 16px;
         border-radius: 50%; background: var(--vcc-accent);
         cursor: pointer; border: 2px solid var(--vcc-bg);
         box-shadow: 0 1px 3px rgba(0,0,0,0.2);
       }
-      .slider-wrap input[type="range"]::-moz-range-thumb {
+      .slider-container input[type="range"]::-moz-range-thumb {
         width: 12px; height: 12px; border-radius: 50%;
         background: var(--vcc-accent); cursor: pointer;
         border: 2px solid var(--vcc-bg);
