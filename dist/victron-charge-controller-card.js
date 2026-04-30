@@ -372,6 +372,7 @@ class VictronChargeControllerCard extends i {
 
     const action  = this._val('sensor', 'desired_action') || 'idle';
     const actMeta = ACTION_META[action] || ACTION_META.idle;
+    const feedInOn = this._val('switch', 'grid_feed_in_control') === 'on';
 
     return b`
       <ha-card>
@@ -380,9 +381,15 @@ class VictronChargeControllerCard extends i {
             <ha-icon icon="mdi:battery-charging-wireless"></ha-icon>
             <span>${this.config.title}</span>
           </div>
-          <div class="header-badge" data-action=${action}>
-            <ha-icon .icon=${actMeta.icon}></ha-icon>
-            <span>${actMeta.label}</span>
+          <div class="header-badges">
+            <div class="header-badge" data-feed-in=${feedInOn ? 'on' : 'off'}>
+              <ha-icon icon="mdi:transmission-tower"></ha-icon>
+              <span>${feedInOn ? 'Feed-in' : 'No Feed-in'}</span>
+            </div>
+            <div class="header-badge" data-action=${action}>
+              <ha-icon .icon=${actMeta.icon}></ha-icon>
+              <span>${actMeta.label}</span>
+            </div>
           </div>
         </div>
         <div class="card-content">
@@ -423,6 +430,9 @@ class VictronChargeControllerCard extends i {
       }
       .header-title ha-icon { color: var(--vcc-accent); --mdc-icon-size: 22px; }
 
+      .header-badges {
+        display: flex; align-items: center; gap: 6px;
+      }
       .header-badge {
         display: flex; align-items: center; gap: 4px;
         padding: 4px 12px; border-radius: 16px;
@@ -431,6 +441,8 @@ class VictronChargeControllerCard extends i {
       }
       .header-badge[data-action="charge"]    { background: rgba(76,175,80,0.12);  color: var(--vcc-success); }
       .header-badge[data-action="discharge"] { background: rgba(255,152,0,0.12);  color: var(--vcc-warning); }
+      .header-badge[data-feed-in="on"]  { background: rgba(76,175,80,0.12);  color: var(--vcc-success); }
+      .header-badge[data-feed-in="off"] { background: rgba(158,158,158,0.12); color: var(--vcc-disabled); }
       .header-badge ha-icon { --mdc-icon-size: 16px; }
 
       /* ── Content ───────────────────────────────── */
