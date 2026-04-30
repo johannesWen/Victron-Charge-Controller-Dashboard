@@ -61,7 +61,7 @@ const t=globalThis,e=t.ShadowRoot&&(void 0===t.ShadyCSS||t.ShadyCSS.nativeShadow
           </div>
           <div class="status-item">
             <ha-icon icon="mdi:currency-eur"></ha-icon>
-            <span>${null!=s&&"unavailable"!==s&&"unknown"!==s?`${s} ct/kWh`:"—"}</span>
+            <span>${null!=s&&"unavailable"!==s&&"unknown"!==s?`${(100*parseFloat(s)).toFixed(2)} ct/kWh`:"—"}</span>
           </div>
         </div>
       `)}

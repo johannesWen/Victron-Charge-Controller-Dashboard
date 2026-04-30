@@ -264,7 +264,7 @@ class VictronChargeControllerCard extends LitElement {
           </div>
           <div class="status-item">
             <ha-icon icon="mdi:currency-eur"></ha-icon>
-            <span>${spotPrice != null && spotPrice !== 'unavailable' && spotPrice !== 'unknown' ? `${spotPrice} ct/kWh` : '—'}</span>
+            <span>${spotPrice != null && spotPrice !== 'unavailable' && spotPrice !== 'unknown' ? `${(parseFloat(spotPrice) * 100).toFixed(2)} ct/kWh` : '—'}</span>
           </div>
         </div>
       `)}
