@@ -205,7 +205,7 @@ class VictronChargeControllerCard extends LitElement {
     const actMeta  = ACTION_META[action] || ACTION_META.idle;
     const setpoint = this._val('sensor', 'target_setpoint') || '0';
     const isAuto   = mode === 'auto';
-    const feedIn   = this._val('switch', 'grid_feed_in_control_enabled') === 'on';
+    const feedIn   = this._val('switch', 'grid_feed_in_control') === 'on';
 
     return html`
       <!-- Mode & Status -->
@@ -260,15 +260,15 @@ class VictronChargeControllerCard extends LitElement {
 
       <!-- Auto Mode (visible only when mode=auto) -->
       ${isAuto ? this._renderSection('Auto Mode', 'mdi:auto-fix', html`
-        ${this._renderSlider('Cheapest Hours', 'cheapest_hours', ' h')}
-        ${this._renderSlider('Expensive Hours', 'expensive_hours', ' h')}
+        ${this._renderSlider('Cheapest Hours', 'cheapest_hours_auto_charge', ' h')}
+        ${this._renderSlider('Expensive Hours', 'expensive_hours_auto_discharge', ' h')}
         ${this._renderSlider('Charge Price Threshold', 'charge_price_threshold', ' ct/kWh')}
         ${this._renderSlider('Discharge Price Threshold', 'discharge_price_threshold', ' ct/kWh')}
       `) : nothing}
 
       <!-- Grid Feed-in -->
       ${this._renderSection('Grid Feed-in', 'mdi:solar-power', html`
-        ${this._renderToggle('Feed-in Control', 'grid_feed_in_control_enabled')}
+        ${this._renderToggle('Feed-in Control', 'grid_feed_in_control')}
         ${feedIn ? html`
           ${this._renderSlider('Price Threshold', 'grid_feed_in_price_threshold', ' ct/kWh')}
           ${this._renderSlider('Default Max Feed-in', 'default_max_grid_feed_in', ' W')}

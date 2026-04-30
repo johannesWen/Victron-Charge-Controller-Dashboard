@@ -31,7 +31,7 @@ const t=globalThis,e=t.ShadowRoot&&(void 0===t.ShadyCSS||t.ShadyCSS.nativeShadow
             @click=${()=>this._toggleBlockedHour(t,e)}
           >${String(e).padStart(2,"0")}</button>
         `)}
-      </div>`}_renderControlsView(){const t=this._val("select","control_mode")||"off",e=this._val("sensor","desired_action")||"idle",i=ut[e]||ut.idle,r=this._val("sensor","target_setpoint")||"0",s="auto"===t,o="on"===this._val("switch","grid_feed_in_control_enabled");return L`
+      </div>`}_renderControlsView(){const t=this._val("select","control_mode")||"off",e=this._val("sensor","desired_action")||"idle",i=ut[e]||ut.idle,r=this._val("sensor","target_setpoint")||"0",s="auto"===t,o="on"===this._val("switch","grid_feed_in_control");return L`
       <!-- Mode & Status -->
       ${this._renderSection("Mode","mdi:cog",L`
         <div class="mode-group">
@@ -81,15 +81,15 @@ const t=globalThis,e=t.ShadowRoot&&(void 0===t.ShadyCSS||t.ShadyCSS.nativeShadow
 
       <!-- Auto Mode (visible only when mode=auto) -->
       ${s?this._renderSection("Auto Mode","mdi:auto-fix",L`
-        ${this._renderSlider("Cheapest Hours","cheapest_hours"," h")}
-        ${this._renderSlider("Expensive Hours","expensive_hours"," h")}
+        ${this._renderSlider("Cheapest Hours","cheapest_hours_auto_charge"," h")}
+        ${this._renderSlider("Expensive Hours","expensive_hours_auto_discharge"," h")}
         ${this._renderSlider("Charge Price Threshold","charge_price_threshold"," ct/kWh")}
         ${this._renderSlider("Discharge Price Threshold","discharge_price_threshold"," ct/kWh")}
       `):V}
 
       <!-- Grid Feed-in -->
       ${this._renderSection("Grid Feed-in","mdi:solar-power",L`
-        ${this._renderToggle("Feed-in Control","grid_feed_in_control_enabled")}
+        ${this._renderToggle("Feed-in Control","grid_feed_in_control")}
         ${o?L`
           ${this._renderSlider("Price Threshold","grid_feed_in_price_threshold"," ct/kWh")}
           ${this._renderSlider("Default Max Feed-in","default_max_grid_feed_in"," W")}
