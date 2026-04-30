@@ -25,6 +25,11 @@ const ACTION_META = {
   discharge: { icon: 'mdi:battery-arrow-down',   label: 'Discharging' },
 };
 
+const FEED_IN_META = {
+  default: { icon: 'mdi:transmission-tower',          label: 'Default' },
+  reduced: { icon: 'mdi:transmission-tower-off',      label: 'Reduced' },
+};
+
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 
 // ────────────────────────────────────────────────────────────
@@ -348,7 +353,8 @@ class VictronChargeControllerCard extends LitElement {
 
     const action  = this._val('sensor', 'desired_action') || 'idle';
     const actMeta = ACTION_META[action] || ACTION_META.idle;
-    const feedInOn = this._val('switch', 'grid_feed_in_control') === 'on';
+    const feedInStatus = this._val('sensor', 'grid_feed_in_status') || 'default';
+    const feedInMeta = FEED_IN_META[feedInStatus] || FEED_IN_META.default;
 
     return html`
       <ha-card>
@@ -358,9 +364,9 @@ class VictronChargeControllerCard extends LitElement {
             <span>${this.config.title}</span>
           </div>
           <div class="header-badges">
-            <div class="header-badge" data-feed-in=${feedInOn ? 'on' : 'off'}>
-              <ha-icon icon="mdi:transmission-tower"></ha-icon>
-              <span>${feedInOn ? 'Feed-in' : 'No Feed-in'}</span>
+            <div class="header-badge" data-feed-in=${feedInStatus}>
+              <ha-icon .icon=${feedInMeta.icon}></ha-icon>
+              <span>${feedInMeta.label}</span>
             </div>
             <div class="header-badge" data-action=${action}>
               <ha-icon .icon=${actMeta.icon}></ha-icon>
@@ -417,8 +423,8 @@ class VictronChargeControllerCard extends LitElement {
       }
       .header-badge[data-action="charge"]    { background: rgba(76,175,80,0.12);  color: var(--vcc-success); }
       .header-badge[data-action="discharge"] { background: rgba(255,152,0,0.12);  color: var(--vcc-warning); }
-      .header-badge[data-feed-in="on"]  { background: rgba(76,175,80,0.12);  color: var(--vcc-success); }
-      .header-badge[data-feed-in="off"] { background: rgba(158,158,158,0.12); color: var(--vcc-disabled); }
+      .header-badge[data-feed-in="default"]  { background: rgba(76,175,80,0.12);  color: var(--vcc-success); }
+      .header-badge[data-feed-in="reduced"]  { background: rgba(255,152,0,0.12);  color: var(--vcc-warning); }
       .header-badge ha-icon { --mdc-icon-size: 16px; }
 
       /* ── Content ───────────────────────────────── */
