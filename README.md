@@ -91,6 +91,31 @@ npm run serve
 
 The output is written to `dist/victron-charge-controller-card.js`.
 
+### Testing in Home Assistant (Docker)
+
+A `docker-compose.yml` is included that spins up a full Home Assistant instance with the card and the backend integration pre-loaded, along with dummy sensors so no real hardware is needed.
+
+```bash
+# 1. Build the card
+npm run build
+
+# 2. Start the dev container
+docker compose up -d
+
+# 3. Open Home Assistant
+#    http://localhost:8123
+```
+
+On first launch, complete the HA onboarding wizard. The Lovelace dashboard at **Overview** will already contain the card and helper controls to adjust dummy sensor values (Battery SOC, Grid Setpoint, EPEX Spot Price).
+
+To iterate on the card, rebuild with `npm run build` and hard-refresh the browser (`Ctrl+Shift+R`).
+
+Stop the container with:
+
+```bash
+docker compose down
+```
+
 ## License
 
 This project is licensed under the [MIT License](LICENSE).

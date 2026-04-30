@@ -1,0 +1,22 @@
+services:
+  homeassistant:
+    container_name: ha-dashboard-dev
+    image: ghcr.io/home-assistant/home-assistant:stable
+    restart: unless-stopped
+    ports:
+      - "8123:8123"
+    volumes:
+      # Mount the backend integration from the submodule
+      - ./submodule/Victron-Charge-Controller/custom_components/victron_charge_control:/config/custom_components/victron_charge_control
+      # Mount the built dashboard card into HA's www directory
+      - ./dist/victron-charge-controller-card.js:/config/www/victron-charge-controller-card.js
+      # Mount dev HA configuration (based on submodule config + Lovelace YAML mode)
+      - ./dev/configuration.yaml:/config/configuration.yaml
+      - ./dev/ui-lovelace.yaml:/config/ui-lovelace.yaml
+      # Reuse submodule's empty placeholder files
+      - ./submodule/Victron-Charge-Controller/dev/automations.yaml:/config/automations.yaml
+      - ./submodule/Victron-Charge-Controller/dev/scripts.yaml:/config/scripts.yaml
+      - ./submodule/Victron-Charge-Controller/dev/scenes.yaml:/config/scenes.yaml
+      - ./submodule/Victron-Charge-Controller/dev/python_scripts:/config/python_scripts
+    environment:
+      - TZ=Europe/Berlin
