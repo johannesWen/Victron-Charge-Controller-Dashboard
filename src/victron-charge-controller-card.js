@@ -231,6 +231,7 @@ class VictronChargeControllerCard extends LitElement {
     const action   = this._val('sensor', 'desired_action') || 'idle';
     const actMeta  = ACTION_META[action] || ACTION_META.idle;
     const setpoint = this._val('sensor', 'target_setpoint') || '0';
+    const spotPrice = this._val('sensor', 'current_price');
     const isAuto   = mode === 'auto';
     const feedIn   = this._val('switch', 'grid_feed_in_control') === 'on';
 
@@ -260,6 +261,10 @@ class VictronChargeControllerCard extends LitElement {
           <div class="status-item">
             <ha-icon icon="mdi:flash"></ha-icon>
             <span>${setpoint} W</span>
+          </div>
+          <div class="status-item">
+            <ha-icon icon="mdi:currency-eur"></ha-icon>
+            <span>${spotPrice != null && spotPrice !== 'unavailable' && spotPrice !== 'unknown' ? `${spotPrice} ct/kWh` : '—'}</span>
           </div>
         </div>
       `)}
