@@ -158,7 +158,7 @@ class VictronChargeControllerCard extends LitElement {
   _renderToggle(label, switchKey) {
     const on = this._val('switch', switchKey) === 'on';
     return html`
-      <div class="control-row">
+      <div class="control-row toggle-row">
         <span class="control-label">${label}</span>
         <ha-switch
           .checked=${on}
@@ -173,7 +173,7 @@ class VictronChargeControllerCard extends LitElement {
     const value = parseFloat(obj.state);
     const { min = 0, max = 100, step = 1 } = obj.attributes;
     return html`
-      <div class="control-row">
+      <div class="control-row slider-row">
         <span class="control-label">${label}</span>
         <div class="slider-wrap">
           <div class="slider-container">
@@ -459,9 +459,21 @@ class VictronChargeControllerCard extends LitElement {
         justify-content: space-between;
         min-height: 36px; gap: 12px;
       }
+      .control-row.slider-row {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 2px;
+        min-height: auto;
+      }
       .control-label {
         font-size: 0.88em; color: var(--vcc-text); flex-shrink: 0;
         width: 180px;
+      }
+      .control-row.slider-row > .control-label {
+        width: auto;
+      }
+      .control-row.toggle-row > .control-label {
+        flex: 1; width: auto; text-align: right;
       }
 
       /* ── Mode selector ─────────────────────────── */
