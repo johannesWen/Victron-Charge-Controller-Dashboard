@@ -108,13 +108,20 @@ template:
           {{ prices[h] }}
         attributes:
           data: >-
-            {% set prices = [0.032,0.028,0.021,0.015,0.023,0.057,0.084,0.123,0.156,0.142,0.118,0.105,0.091,0.087,0.112,0.189,0.225,0.283,0.321,0.257,0.194,0.148,0.096,0.052] %}
+            {% set prices_today = [0.032,0.028,0.021,0.015,0.023,0.057,0.084,0.123,0.156,0.142,0.118,0.105,0.091,0.087,0.112,0.189,0.225,0.283,0.321,0.257,0.194,0.148,0.096,0.052] %}
+            {% set prices_tomorrow = [0.038,0.031,0.025,0.018,0.029,0.063,0.095,0.134,0.168,0.155,0.129,0.112,0.098,0.093,0.125,0.201,0.245,0.298,0.342,0.271,0.208,0.161,0.105,0.061] %}
             {% set today = now().replace(hour=0, minute=0, second=0, microsecond=0) %}
+            {% set tomorrow = today + timedelta(days=1) %}
             {% set ns = namespace(entries=[]) %}
             {% for h in range(24) %}
               {% set start = today + timedelta(hours=h) %}
               {% set end = today + timedelta(hours=h+1) %}
-              {% set ns.entries = ns.entries + [{"start_time": start.isoformat(), "end_time": end.isoformat(), "price_eur_per_kwh": prices[h]}] %}
+              {% set ns.entries = ns.entries + [{"start_time": start.isoformat(), "end_time": end.isoformat(), "price_per_kwh": prices_today[h]}] %}
+            {% endfor %}
+            {% for h in range(24) %}
+              {% set start = tomorrow + timedelta(hours=h) %}
+              {% set end = tomorrow + timedelta(hours=h+1) %}
+              {% set ns.entries = ns.entries + [{"start_time": start.isoformat(), "end_time": end.isoformat(), "price_per_kwh": prices_tomorrow[h]}] %}
             {% endfor %}
             {{ ns.entries }}
 
