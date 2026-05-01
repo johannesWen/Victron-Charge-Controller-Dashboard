@@ -49,6 +49,13 @@ class VictronChargeControllerCard extends LitElement {
     super();
     this._sliderHoldTimers = new WeakMap();
     this._sliderUnlocked = new WeakSet();
+    // Threshold drag state
+    this._thresholdDrag = null;
+    this._thresholdHoldTimer = null;
+    this._onThresholdPointerMoveBound = this._onThresholdPointerMove.bind(this);
+    this._onThresholdPointerUpBound = this._onThresholdPointerUp.bind(this);
+    // Pending threshold overrides (until HA entity catches up)
+    this._pendingThresholds = {};
   }
 
   // ── Lovelace lifecycle ──────────────────────────────────
@@ -275,16 +282,13 @@ class VictronChargeControllerCard extends LitElement {
       this._sliderHoldTimers.delete(input);
     }
     progress.classList.remove('active', 'done');
-    // Re-lock after release
-    if (this._sliderUnlocked.has(input)) {
-      this._sliderUnlocked.delete(input);
-      input.classList.remove('unlocked');
-    } else {
-      // Was not unlocked – restore original value
+    // If not unlocked, restore original value immediately
+    if (!this._sliderUnlocked.has(input)) {
       if (input.dataset.lockedValue !== undefined) {
         input.value = input.dataset.lockedValue;
       }
     }
+    // Don't re-lock here — let _onSliderChange commit first, then re-lock
   }
 
   _onSliderInput(e, unit) {
@@ -310,12 +314,105 @@ class VictronChargeControllerCard extends LitElement {
     const input = e.target;
     const tooltip = input.parentElement.querySelector('.slider-tooltip');
     tooltip.style.display = 'none';
-    // Only commit if the slider was unlocked
+    // Commit if the slider was unlocked, then re-lock
     if (this._sliderUnlocked.has(input)) {
       this._setNumber(numberKey, input.value);
+      this._sliderUnlocked.delete(input);
+      input.classList.remove('unlocked');
     } else if (input.dataset.lockedValue !== undefined) {
       input.value = input.dataset.lockedValue;
     }
+  }
+
+  // ── Threshold drag handlers ─────────────────────────────
+
+  _svgYToPrice(svgY, scale) {
+    const { scaleMin, scaleRange, padT, plotH } = scale;
+    const clamped = Math.max(padT, Math.min(padT + plotH, svgY));
+    return scaleMin + ((padT + plotH - clamped) / plotH) * scaleRange;
+  }
+
+  _clientToSvgY(clientY, svgEl) {
+    const pt = svgEl.createSVGPoint();
+    pt.x = 0;
+    pt.y = clientY;
+    const svgPt = pt.matrixTransform(svgEl.getScreenCTM().inverse());
+    return svgPt.y;
+  }
+
+  _onThresholdPointerDown(e, type, scale) {
+    e.preventDefault();
+    e.stopPropagation();
+    const group = e.currentTarget;
+    const svgEl = group.closest('svg');
+
+    // Start hold timer
+    if (this._thresholdHoldTimer) clearTimeout(this._thresholdHoldTimer);
+    this._thresholdDrag = { type, scale, group, svgEl, unlocked: false, price: null };
+    group.classList.add('threshold-holding');
+
+    this._thresholdHoldTimer = setTimeout(() => {
+      if (!this._thresholdDrag) return;
+      this._thresholdDrag.unlocked = true;
+      group.classList.remove('threshold-holding');
+      group.classList.add('threshold-unlocked');
+      // Add move/up listeners to document
+      document.addEventListener('pointermove', this._onThresholdPointerMoveBound);
+      document.addEventListener('pointerup', this._onThresholdPointerUpBound);
+      document.addEventListener('pointercancel', this._onThresholdPointerUpBound);
+    }, 1000);
+
+    // If released before 1s, cancel
+    document.addEventListener('pointerup', this._onThresholdPointerUpBound);
+    document.addEventListener('pointercancel', this._onThresholdPointerUpBound);
+  }
+
+  _onThresholdPointerMove(e) {
+    if (!this._thresholdDrag || !this._thresholdDrag.unlocked) return;
+    e.preventDefault();
+    const { scale, group, svgEl } = this._thresholdDrag;
+    const svgY = this._clientToSvgY(e.clientY, svgEl);
+    let price = this._svgYToPrice(svgY, scale);
+    // Snap to step
+    price = Math.round(price / scale.step) * scale.step;
+    price = Math.max(scale.scaleMin, Math.min(scale.scaleMax, price));
+    this._thresholdDrag.price = price;
+
+    // Update line and label position in DOM
+    const yPos = scale.padT + scale.plotH - ((price - scale.scaleMin) / scale.scaleRange) * scale.plotH;
+    const lines = group.querySelectorAll('line');
+    lines.forEach(l => { l.setAttribute('y1', yPos); l.setAttribute('y2', yPos); });
+    const label = group.querySelector('text');
+    if (label) {
+      label.setAttribute('y', yPos + 3.5);
+      label.textContent = Math.round(price * 10) / 10;
+    }
+  }
+
+  _onThresholdPointerUp(e) {
+    document.removeEventListener('pointermove', this._onThresholdPointerMoveBound);
+    document.removeEventListener('pointerup', this._onThresholdPointerUpBound);
+    document.removeEventListener('pointercancel', this._onThresholdPointerUpBound);
+
+    if (this._thresholdHoldTimer) {
+      clearTimeout(this._thresholdHoldTimer);
+      this._thresholdHoldTimer = null;
+    }
+
+    if (!this._thresholdDrag) return;
+    const { type, unlocked, price, group } = this._thresholdDrag;
+    group.classList.remove('threshold-holding', 'threshold-unlocked');
+
+    if (unlocked && price !== null) {
+      const key = type === 'charge' ? 'charge_price_threshold' : 'discharge_price_threshold';
+      const rounded = Math.round(price * 100) / 100;
+      this._setNumber(key, rounded);
+      // Store pending value so both charts update immediately
+      this._pendingThresholds[type] = rounded;
+      this.requestUpdate();
+    }
+
+    this._thresholdDrag = null;
   }
 
   _renderHourChips(type) {
@@ -447,7 +544,7 @@ class VictronChargeControllerCard extends LitElement {
 
   // ── Shared chart renderer ────────────────────────────────
 
-  _renderPriceChart(enrichedPlan, { showCurrentHour = false, startHour = 0 } = {}) {
+  _renderPriceChart(enrichedPlan, { showCurrentHour = false, startHour = 0, chargeThreshold = null, dischargeThreshold = null } = {}) {
     // Extract prices and determine scale
     const prices = enrichedPlan.map(p => p.price ?? null);
     const validPrices = prices.filter(p => p !== null);
@@ -466,7 +563,7 @@ class VictronChargeControllerCard extends LitElement {
     const chartW = 600;
     const chartH = 260;
     const padL = 50;
-    const padR = 10;
+    const padR = 40;
     const padT = 25;
     const padB = 30;
     const plotW = chartW - padL - padR;
@@ -542,6 +639,38 @@ class VictronChargeControllerCard extends LitElement {
             class="plan-axis-label">${t.val}</text>
         `)}
 
+        <!-- Charge threshold line (interactive) -->
+        ${chargeThreshold !== null && chargeThreshold >= scaleMin && chargeThreshold <= scaleMax ? (() => {
+          const chargeStep = this._state('number', 'charge_price_threshold')?.attributes?.step ?? 0.01;
+          const chargeScale = { scaleMin, scaleMax, scaleRange, padT, plotH, padL, padR, chartW, step: chargeStep };
+          return svg`
+          <g class="threshold-line-group" data-type="charge"
+            @pointerdown=${(e) => this._onThresholdPointerDown(e, 'charge', chargeScale)}>
+            <line x1="${padL}" y1="${yPos(chargeThreshold)}" x2="${chartW - padR}" y2="${yPos(chargeThreshold)}"
+              stroke="transparent" stroke-width="16" class="threshold-hit-area" />
+            <line x1="${padL}" y1="${yPos(chargeThreshold)}" x2="${chartW - padR}" y2="${yPos(chargeThreshold)}"
+              stroke="var(--vcc-success, #4caf50)" stroke-width="1.5" stroke-dasharray="6,4" class="threshold-visible-line" />
+            <text x="${chartW - padR + 4}" y="${yPos(chargeThreshold) + 3.5}" text-anchor="start"
+              class="plan-threshold-label" fill="var(--vcc-success, #4caf50)">${Math.round(chargeThreshold * 10) / 10}</text>
+          </g>`;
+        })() : nothing}
+
+        <!-- Discharge threshold line (interactive) -->
+        ${dischargeThreshold !== null && dischargeThreshold >= scaleMin && dischargeThreshold <= scaleMax ? (() => {
+          const dischargeStep = this._state('number', 'discharge_price_threshold')?.attributes?.step ?? 0.01;
+          const dischargeScale = { scaleMin, scaleMax, scaleRange, padT, plotH, padL, padR, chartW, step: dischargeStep };
+          return svg`
+          <g class="threshold-line-group" data-type="discharge"
+            @pointerdown=${(e) => this._onThresholdPointerDown(e, 'discharge', dischargeScale)}>
+            <line x1="${padL}" y1="${yPos(dischargeThreshold)}" x2="${chartW - padR}" y2="${yPos(dischargeThreshold)}"
+              stroke="transparent" stroke-width="16" class="threshold-hit-area" />
+            <line x1="${padL}" y1="${yPos(dischargeThreshold)}" x2="${chartW - padR}" y2="${yPos(dischargeThreshold)}"
+              stroke="var(--vcc-warning, #ff9800)" stroke-width="1.5" stroke-dasharray="6,4" class="threshold-visible-line" />
+            <text x="${chartW - padR + 4}" y="${yPos(dischargeThreshold) + 3.5}" text-anchor="start"
+              class="plan-threshold-label" fill="var(--vcc-warning, #ff9800)">${Math.round(dischargeThreshold * 10) / 10}</text>
+          </g>`;
+        })() : nothing}
+
         <!-- Y-axis unit -->
         <text x="${padL - 6}" y="${padT - 12}" text-anchor="end"
           class="plan-axis-unit">ct/kWh</text>
@@ -590,8 +719,21 @@ class VictronChargeControllerCard extends LitElement {
       }
     }
 
+    const chargeThreshold = parseFloat(this._val('number', 'charge_price_threshold'));
+    const dischargeThreshold = parseFloat(this._val('number', 'discharge_price_threshold'));
+    // Use pending overrides until entity state catches up
+    const ctCharge = this._pendingThresholds.charge ?? (isNaN(chargeThreshold) ? null : chargeThreshold);
+    const ctDischarge = this._pendingThresholds.discharge ?? (isNaN(dischargeThreshold) ? null : dischargeThreshold);
+    // Clear pending values once entity state matches
+    if (this._pendingThresholds.charge !== undefined && !isNaN(chargeThreshold) && Math.abs(chargeThreshold - this._pendingThresholds.charge) < 0.001) {
+      delete this._pendingThresholds.charge;
+    }
+    if (this._pendingThresholds.discharge !== undefined && !isNaN(dischargeThreshold) && Math.abs(dischargeThreshold - this._pendingThresholds.discharge) < 0.001) {
+      delete this._pendingThresholds.discharge;
+    }
+
     const currentHour = new Date().getHours();
-    const todayChart = this._renderPriceChart(todayPlan, { showCurrentHour: true, startHour: currentHour });
+    const todayChart = this._renderPriceChart(todayPlan, { showCurrentHour: true, startHour: currentHour, chargeThreshold: ctCharge, dischargeThreshold: ctDischarge });
 
     // --- Tomorrow chart ---
     const tomorrow = new Date();
@@ -605,7 +747,7 @@ class VictronChargeControllerCard extends LitElement {
         ...p,
         price: tomorrowPriceMap[p.hour] ?? null,
       }));
-      tomorrowChart = this._renderPriceChart(tomorrowPlan);
+      tomorrowChart = this._renderPriceChart(tomorrowPlan, { chargeThreshold: ctCharge, dischargeThreshold: ctDischarge });
     }
 
     if (!todayChart && !tomorrowChart) {
@@ -652,6 +794,18 @@ class VictronChargeControllerCard extends LitElement {
             <span class="plan-legend-dot plan-legend-dot-current"></span>
             <span>Current</span>
           </div>
+          ${ctCharge !== null ? html`
+            <div class="plan-legend-item">
+              <span class="plan-legend-line" style="border-color: var(--vcc-success)"></span>
+              <span>Charge Threshold</span>
+            </div>
+          ` : nothing}
+          ${ctDischarge !== null ? html`
+            <div class="plan-legend-item">
+              <span class="plan-legend-line" style="border-color: var(--vcc-warning)"></span>
+              <span>Discharge Threshold</span>
+            </div>
+          ` : nothing}
         </div>
       </div>`;
   }
@@ -973,6 +1127,30 @@ class VictronChargeControllerCard extends LitElement {
         font-size: 14px;
         fill: var(--vcc-text2, #757575);
       }
+      .plan-threshold-label {
+        font-size: 11px;
+        font-weight: 700;
+      }
+      .threshold-line-group {
+        cursor: grab; touch-action: none;
+      }
+      .threshold-line-group .threshold-visible-line {
+        transition: stroke-width 0.2s;
+      }
+      .threshold-line-group.threshold-holding .threshold-visible-line {
+        stroke-width: 2.5;
+        animation: threshold-pulse 1s linear;
+      }
+      .threshold-line-group.threshold-unlocked .threshold-visible-line {
+        stroke-width: 3;
+      }
+      .threshold-line-group.threshold-unlocked {
+        cursor: ns-resize;
+      }
+      @keyframes threshold-pulse {
+        0% { stroke-opacity: 0.5; }
+        100% { stroke-opacity: 1; }
+      }
       .plan-current-hour {
         font-weight: 700;
         fill: var(--vcc-accent, #03a9f4);
@@ -992,6 +1170,12 @@ class VictronChargeControllerCard extends LitElement {
       .plan-legend-dot-current {
         background: none;
         border: 1.5px dashed var(--vcc-accent, #03a9f4);
+      }
+      .plan-legend-line {
+        width: 16px; height: 0;
+        border-top: 2px dashed;
+        flex-shrink: 0;
+        align-self: center;
       }
       .plan-chart-label {
         font-size: 0.85em;
