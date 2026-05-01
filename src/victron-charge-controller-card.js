@@ -47,6 +47,8 @@ class VictronChargeControllerCard extends LitElement {
 
   constructor() {
     super();
+    this._sliderHoldTimers = new WeakMap();
+    this._sliderUnlocked = new WeakSet();
   }
 
   // ── Lovelace lifecycle ──────────────────────────────────
@@ -231,16 +233,69 @@ class VictronChargeControllerCard extends LitElement {
               .value=${String(value)}
               @input=${(e) => this._onSliderInput(e, unit)}
               @change=${(e) => this._onSliderChange(e, numberKey)}
+              @pointerdown=${(e) => this._onSliderPointerDown(e)}
+              @pointerup=${(e) => this._onSliderPointerUp(e)}
+              @pointercancel=${(e) => this._onSliderPointerUp(e)}
             />
             <span class="slider-tooltip" style="display:none;"></span>
+            <div class="slider-hold-progress"></div>
           </div>
           <span class="slider-value">${value}${unit}</span>
         </div>
       </div>`;
   }
 
+  _onSliderPointerDown(e) {
+    const input = e.target;
+    // Store the original value to restore if not unlocked
+    input.dataset.lockedValue = input.value;
+    // Prevent the slider from moving until held long enough
+    if (!this._sliderUnlocked.has(input)) {
+      const progress = input.parentElement.querySelector('.slider-hold-progress');
+      progress.classList.add('active');
+      this._sliderHoldTimers.set(input, setTimeout(() => {
+        this._sliderUnlocked.add(input);
+        input.classList.add('unlocked');
+        progress.classList.remove('active');
+        progress.classList.add('done');
+        // Brief haptic-like visual pulse
+        input.parentElement.classList.add('slider-activated');
+        setTimeout(() => input.parentElement.classList.remove('slider-activated'), 200);
+      }, 1000));
+    }
+  }
+
+  _onSliderPointerUp(e) {
+    const input = e.target;
+    const progress = input.parentElement.querySelector('.slider-hold-progress');
+    // Clear pending hold timer
+    const timer = this._sliderHoldTimers.get(input);
+    if (timer) {
+      clearTimeout(timer);
+      this._sliderHoldTimers.delete(input);
+    }
+    progress.classList.remove('active', 'done');
+    // Re-lock after release
+    if (this._sliderUnlocked.has(input)) {
+      this._sliderUnlocked.delete(input);
+      input.classList.remove('unlocked');
+    } else {
+      // Was not unlocked – restore original value
+      if (input.dataset.lockedValue !== undefined) {
+        input.value = input.dataset.lockedValue;
+      }
+    }
+  }
+
   _onSliderInput(e, unit) {
     const input = e.target;
+    // If not unlocked, revert to locked value
+    if (!this._sliderUnlocked.has(input)) {
+      if (input.dataset.lockedValue !== undefined) {
+        input.value = input.dataset.lockedValue;
+      }
+      return;
+    }
     const tooltip = input.parentElement.querySelector('.slider-tooltip');
     const val = input.value;
     const min = parseFloat(input.min);
@@ -252,9 +307,15 @@ class VictronChargeControllerCard extends LitElement {
   }
 
   _onSliderChange(e, numberKey) {
-    const tooltip = e.target.parentElement.querySelector('.slider-tooltip');
+    const input = e.target;
+    const tooltip = input.parentElement.querySelector('.slider-tooltip');
     tooltip.style.display = 'none';
-    this._setNumber(numberKey, e.target.value);
+    // Only commit if the slider was unlocked
+    if (this._sliderUnlocked.has(input)) {
+      this._setNumber(numberKey, input.value);
+    } else if (input.dataset.lockedValue !== undefined) {
+      input.value = input.dataset.lockedValue;
+    }
   }
 
   _renderHourChips(type) {
@@ -801,18 +862,51 @@ class VictronChargeControllerCard extends LitElement {
         flex: 1; min-width: 0; height: 4px; width: 100%;
         -webkit-appearance: none; appearance: none;
         background: var(--vcc-border); border-radius: 2px; outline: none;
+        touch-action: none;
       }
       .slider-container input[type="range"]::-webkit-slider-thumb {
         -webkit-appearance: none; width: 16px; height: 16px;
         border-radius: 50%; background: var(--vcc-accent);
         cursor: pointer; border: 2px solid var(--vcc-bg);
         box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+        opacity: 0.5; transition: opacity 0.2s, transform 0.2s;
+      }
+      .slider-container input[type="range"].unlocked::-webkit-slider-thumb {
+        opacity: 1; transform: scale(1.3);
       }
       .slider-container input[type="range"]::-moz-range-thumb {
         width: 12px; height: 12px; border-radius: 50%;
         background: var(--vcc-accent); cursor: pointer;
         border: 2px solid var(--vcc-bg);
         box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+        opacity: 0.5; transition: opacity 0.2s, transform 0.2s;
+      }
+      .slider-container input[type="range"].unlocked::-moz-range-thumb {
+        opacity: 1; transform: scale(1.3);
+      }
+      .slider-hold-progress {
+        position: absolute; bottom: -3px; left: 0; right: 0;
+        height: 2px; border-radius: 1px; overflow: hidden;
+        pointer-events: none;
+      }
+      .slider-hold-progress::after {
+        content: ''; display: block; height: 100%;
+        background: var(--vcc-accent); width: 0%;
+        border-radius: 1px;
+      }
+      .slider-hold-progress.active::after {
+        width: 100%; transition: width 1s linear;
+      }
+      .slider-hold-progress.done::after {
+        width: 100%; background: var(--vcc-accent);
+      }
+      .slider-activated {
+        animation: slider-pulse 0.2s ease;
+      }
+      @keyframes slider-pulse {
+        0% { transform: scale(1); }
+        50% { transform: scale(1.02); }
+        100% { transform: scale(1); }
       }
       .slider-value {
         font-size: 0.82em; font-weight: 500; color: var(--vcc-text);
