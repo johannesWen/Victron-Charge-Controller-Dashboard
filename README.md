@@ -2,9 +2,9 @@
 
 A custom [Home Assistant](https://www.home-assistant.io/) Lovelace dashboard card for controlling and monitoring a Victron ESS system via the [Victron Charge Controller](https://github.com/johannesWen/Victron-Charge-Controller) integration.
 
-| Settings Card |
-|:---:|
-| <a href="assets/screenshots/settings_card.png"><img src="assets/screenshots/settings_card.png" width="400"></a> |
+| Settings Card | Plan Card |
+|:---:|:---:| 
+| <a href="assets/screenshots/settings_card.png"><img src="assets/screenshots/settings_card.png" width="400"></a> | <a href="assets/screenshots/settings_card.png"><img src="assets/screenshots/plan_card.png" width="400"></a> |
 
 
 ## Features
