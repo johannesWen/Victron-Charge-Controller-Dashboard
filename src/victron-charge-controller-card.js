@@ -704,6 +704,7 @@ class VictronChargeControllerCard extends LitElement {
     }
 
     const priceEntity = this._state('sensor', 'current_price');
+    const currentPrice = priceEntity?.state;
     const attrs = priceEntity?.attributes || {};
 
     // --- Today chart ---
@@ -760,6 +761,13 @@ class VictronChargeControllerCard extends LitElement {
 
     return html`
       <div class="plan-chart-container">
+        ${currentPrice != null && currentPrice !== 'unavailable' && currentPrice !== 'unknown' ? html`
+          <div class="plan-current-price">
+            <ha-icon icon="mdi:currency-eur"></ha-icon>
+            <span><strong>${(parseFloat(currentPrice) * 100).toFixed(2)} ct/kWh</strong></span>
+          </div>
+        ` : nothing}
+
         ${todayChart ? html`
           <div class="plan-chart-label">Today</div>
           ${todayChart}
@@ -1187,6 +1195,18 @@ class VictronChargeControllerCard extends LitElement {
         color: var(--vcc-text2, #757575);
         font-weight: 400;
         font-style: italic;
+      }
+      .plan-current-price {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.95em;
+        color: var(--vcc-text, #212121);
+        padding: 4px 0 8px;
+      }
+      .plan-current-price ha-icon {
+        --mdc-icon-size: 18px;
+        color: var(--vcc-text2, #757575);
       }
     `;
   }
