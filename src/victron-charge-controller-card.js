@@ -62,10 +62,9 @@ class VictronChargeControllerCard extends LitElement {
 
   setConfig(config) {
     this.config = {
-      entity_prefix: DEFAULT_PREFIX,
-      title: 'Victron Charge Control',
       view: 'settings',
       ...config,
+      entity_prefix: DEFAULT_PREFIX,
     };
   }
 
@@ -78,7 +77,7 @@ class VictronChargeControllerCard extends LitElement {
   }
 
   static getStubConfig() {
-    return { entity_prefix: DEFAULT_PREFIX, title: 'Victron Charge Control', view: 'settings' };
+    return { view: 'settings' };
   }
 
   // ── Entity helpers ──────────────────────────────────────
@@ -889,7 +888,7 @@ class VictronChargeControllerCard extends LitElement {
         <div class="card-header">
           <div class="header-title">
             <ha-icon icon="mdi:battery-charging-wireless"></ha-icon>
-            <span>${this.config.title}</span>
+            <span>${this.config.view === 'plan' ? 'Plan' : 'Settings'}</span>
           </div>
           <div class="header-badges">
             <div class="header-badge" data-feed-in=${feedInStatus}>
@@ -1316,21 +1315,6 @@ class VictronChargeControllerCardEditor extends LitElement {
     if (!this.config) return nothing;
     return html`
       <div class="editor">
-        <div class="row">
-          <label for="title">Title</label>
-          <input id="title" type="text"
-            .value=${this.config.title || 'Victron Charge Control'}
-            @input=${(e) => this._changed('title', e.target.value)}
-          />
-        </div>
-        <div class="row">
-          <label for="prefix">Entity Prefix</label>
-          <input id="prefix" type="text"
-            .value=${this.config.entity_prefix || DEFAULT_PREFIX}
-            @input=${(e) => this._changed('entity_prefix', e.target.value)}
-          />
-          <small>Common prefix of all entity IDs (e.g. victron_charge_control)</small>
-        </div>
         <div class="row">
           <label for="view">View</label>
           <select id="view"
