@@ -778,16 +778,34 @@ class VictronChargeControllerCard extends LitElement {
     return html`
       <div class="plan-chart-container">
         <div class="plan-toolbar">
-          ${currentPrice != null && currentPrice !== 'unavailable' && currentPrice !== 'unknown' ? html`
-            <div class="plan-current-price">
-              <ha-icon icon="mdi:currency-eur"></ha-icon>
-              <span><strong>${(parseFloat(currentPrice) * 100).toFixed(2)} ct/kWh</strong></span>
-            </div>
-          ` : html`<div></div>`}
-          <button class="action-btn plan-recalc-btn" @click=${() => this._pressButton('recalculate_schedule')}>
-            <ha-icon icon="mdi:refresh"></ha-icon>
-            Recalculate
-          </button>
+          <div class="plan-toolbar-left">
+            ${currentPrice != null && currentPrice !== 'unavailable' && currentPrice !== 'unknown' ? html`
+              <div class="plan-current-price">
+                <ha-icon icon="mdi:currency-eur"></ha-icon>
+                <span><strong>${(parseFloat(currentPrice) * 100).toFixed(2)} ct/kWh</strong></span>
+              </div>
+            ` : nothing}
+          </div>
+          <div class="plan-toolbar-right">
+            <button class="action-btn plan-recalc-btn"
+              @click=${() => this._pressButton('recalculate_schedule')}>
+              <ha-icon icon="mdi:refresh"></ha-icon>
+              Recalculate
+            </button>
+            ${(() => {
+              const lastUpdate = this._state('sensor', 'last_schedule_update');
+              if (!lastUpdate || lastUpdate.state === 'unknown' || lastUpdate.state === 'unavailable') return nothing;
+              const dt = new Date(lastUpdate.state);
+              if (isNaN(dt.getTime())) return nothing;
+              const diffMs = Date.now() - dt.getTime();
+              const diffMin = Math.floor(diffMs / 60000);
+              let ago;
+              if (diffMin < 1) ago = 'just now';
+              else if (diffMin < 60) ago = `${diffMin} min ago`;
+              else { const h = Math.floor(diffMin / 60); ago = `${h}h ${diffMin % 60}m ago`; }
+              return html`<span class="plan-last-update">Updated: ${ago}</span>`;
+            })()}
+          </div>
         </div>
 
         ${todayChart ? html`
@@ -1228,6 +1246,24 @@ class VictronChargeControllerCard extends LitElement {
         align-items: center;
         justify-content: space-between;
         padding: 0 0 4px;
+      }
+      .plan-toolbar-right {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 2px;
+      }
+      .plan-recalc-btn {
+        font-size: 0.78em;
+        padding: 5px 10px;
+      }
+      .plan-recalc-btn:hover {
+        border-color: var(--vcc-accent, #03a9f4);
+        color: var(--vcc-accent, #03a9f4);
+      }
+      .plan-last-update {
+        font-size: 0.72em;
+        color: var(--vcc-text2, #757575);
       }
       .plan-current-price {
         display: flex;
