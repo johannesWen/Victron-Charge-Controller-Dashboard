@@ -777,12 +777,18 @@ class VictronChargeControllerCard extends LitElement {
 
     return html`
       <div class="plan-chart-container">
-        ${currentPrice != null && currentPrice !== 'unavailable' && currentPrice !== 'unknown' ? html`
-          <div class="plan-current-price">
-            <ha-icon icon="mdi:currency-eur"></ha-icon>
-            <span><strong>${(parseFloat(currentPrice) * 100).toFixed(2)} ct/kWh</strong></span>
-          </div>
-        ` : nothing}
+        <div class="plan-toolbar">
+          ${currentPrice != null && currentPrice !== 'unavailable' && currentPrice !== 'unknown' ? html`
+            <div class="plan-current-price">
+              <ha-icon icon="mdi:currency-eur"></ha-icon>
+              <span><strong>${(parseFloat(currentPrice) * 100).toFixed(2)} ct/kWh</strong></span>
+            </div>
+          ` : html`<div></div>`}
+          <button class="action-btn plan-recalc-btn" @click=${() => this._pressButton('recalculate_schedule')}>
+            <ha-icon icon="mdi:refresh"></ha-icon>
+            Recalculate
+          </button>
+        </div>
 
         ${todayChart ? html`
           <div class="plan-chart-label">Today <span class="plan-chart-date">${todayDate}</span></div>
@@ -1217,17 +1223,30 @@ class VictronChargeControllerCard extends LitElement {
         color: var(--vcc-text2, #757575);
         font-size: 0.9em;
       }
+      .plan-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 0 4px;
+      }
       .plan-current-price {
         display: flex;
         align-items: center;
         gap: 6px;
         font-size: 0.95em;
         color: var(--vcc-text, #212121);
-        padding: 4px 0 8px;
       }
       .plan-current-price ha-icon {
         --mdc-icon-size: 18px;
         color: var(--vcc-text2, #757575);
+      }
+      .plan-recalc-btn {
+        font-size: 0.78em;
+        padding: 5px 10px;
+      }
+      .plan-recalc-btn:hover {
+        border-color: var(--vcc-accent, #03a9f4);
+        color: var(--vcc-accent, #03a9f4);
       }
     `;
   }
