@@ -544,7 +544,7 @@ class VictronChargeControllerCard extends LitElement {
 
   // ── Shared chart renderer ────────────────────────────────
 
-  _renderPriceChart(enrichedPlan, { showCurrentHour = false, startHour = 0, chargeThreshold = null, dischargeThreshold = null } = {}) {
+  _renderPriceChart(enrichedPlan, { showCurrentHour = false, chargeThreshold = null, dischargeThreshold = null } = {}) {
     // Extract prices and determine scale
     const prices = enrichedPlan.map(p => p.price ?? null);
     const validPrices = prices.filter(p => p !== null);
@@ -568,7 +568,8 @@ class VictronChargeControllerCard extends LitElement {
     const padB = 30;
     const plotW = chartW - padL - padR;
     const plotH = chartH - padT - padB;
-    const barW = plotW / 24;
+    const barCount = enrichedPlan.length;
+    const barW = plotW / barCount;
     const barGap = 2;
 
     const actionColor = (action) => {
@@ -610,14 +611,15 @@ class VictronChargeControllerCard extends LitElement {
         ${enrichedPlan.map((entry, i) => {
           const price = entry.price;
           if (price === null || price === undefined) return nothing;
+          const h = entry.hour ?? i;
           const x = padL + i * barW + barGap / 2;
           const w = barW - barGap;
           const barTop = yPos(price);
           const barBase = zeroInRange ? yPos(0) : padT + plotH;
           const barY = Math.min(barTop, barBase);
           const barH = Math.abs(barTop - barBase) || 1;
-          const isPast = i < startHour;
-          const isCurrent = showCurrentHour && i === currentHour;
+          const isPast = showCurrentHour && h < currentHour;
+          const isCurrent = showCurrentHour && h === currentHour;
           return svg`
             <rect
               x="${x}" y="${barY}" width="${w}" height="${barH}"
@@ -677,12 +679,13 @@ class VictronChargeControllerCard extends LitElement {
 
         <!-- X-axis labels (every 2 hours) -->
         ${enrichedPlan.map((entry, i) => {
-          if (i % 2 !== 0 && !(showCurrentHour && i === currentHour)) return nothing;
+          const h = entry.hour ?? i;
+          if (h % 2 !== 0 && !(showCurrentHour && h === currentHour)) return nothing;
           const x = padL + i * barW + barW / 2;
           return svg`
             <text x="${x}" y="${chartH - 6}" text-anchor="middle"
-              class="plan-axis-label ${showCurrentHour && i === currentHour ? 'plan-current-hour' : ''}"
-            >${String(i).padStart(2, '0')}</text>
+              class="plan-axis-label ${showCurrentHour && h === currentHour ? 'plan-current-hour' : ''}"
+            >${String(h).padStart(2, '0')}</text>
           `;
         })}
       </svg>
@@ -707,22 +710,44 @@ class VictronChargeControllerCard extends LitElement {
     const currentPrice = priceEntity?.state;
     const attrs = priceEntity?.attributes || {};
 
-    // --- Today chart ---
-    let todayPlan = plan;
-    const hasPrices = plan.some(p => p.price !== undefined && p.price !== null);
-    if (!hasPrices) {
+    // --- Split plan by date ---
+    const dates = [...new Set(plan.map(p => p.date))].sort();
+    const todayDate = dates[0];
+    const tomorrowDate = dates.length > 1 ? dates[1] : null;
+
+    let todayPlan = plan.filter(p => p.date === todayDate);
+    const rawTomorrowPlan = tomorrowDate ? plan.filter(p => p.date === tomorrowDate) : [];
+
+    // Fallback: enrich today's plan with EPEX prices if entries lack them
+    const todayHasPrices = todayPlan.some(p => p.price !== undefined && p.price !== null);
+    if (!todayHasPrices) {
       const priceMap = this._extractEpexPrices(attrs);
       if (Object.keys(priceMap).length > 0) {
-        todayPlan = plan.map(p => ({
+        todayPlan = todayPlan.map(p => ({
           ...p,
           price: priceMap[p.hour] ?? null,
         }));
       }
     }
 
+    // Fallback: enrich tomorrow's plan with EPEX prices if entries lack them
+    let tomorrowPlan = rawTomorrowPlan;
+    const tomorrowHasPrices = tomorrowPlan.some(p => p.price !== undefined && p.price !== null);
+    if (!tomorrowHasPrices && tomorrowDate) {
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const tomorrowPriceMap = this._extractEpexPrices(attrs, tomorrow);
+      if (Object.keys(tomorrowPriceMap).length > 0) {
+        tomorrowPlan = tomorrowPlan.map(p => ({
+          ...p,
+          price: tomorrowPriceMap[p.hour] ?? null,
+        }));
+      }
+    }
+
     const chargeThreshold = parseFloat(this._val('number', 'charge_price_threshold'));
     const dischargeThreshold = parseFloat(this._val('number', 'discharge_price_threshold'));
-    // Use pending overrides until entity state catches up
+    // Use pending overrides until HA entity catches up
     const ctCharge = this._pendingThresholds.charge ?? (isNaN(chargeThreshold) ? null : chargeThreshold);
     const ctDischarge = this._pendingThresholds.discharge ?? (isNaN(dischargeThreshold) ? null : dischargeThreshold);
     // Clear pending values once entity state matches
@@ -734,22 +759,13 @@ class VictronChargeControllerCard extends LitElement {
     }
 
     const currentHour = new Date().getHours();
-    const todayChart = this._renderPriceChart(todayPlan, { showCurrentHour: true, startHour: currentHour, chargeThreshold: ctCharge, dischargeThreshold: ctDischarge });
+    const todayChart = this._renderPriceChart(todayPlan, { showCurrentHour: true, chargeThreshold: ctCharge, dischargeThreshold: ctDischarge });
 
-    // --- Tomorrow chart ---
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const tomorrowPriceMap = this._extractEpexPrices(attrs, tomorrow);
-    const hasTomorrowPrices = Object.keys(tomorrowPriceMap).length > 0;
-
-    let tomorrowChart = null;
-    if (hasTomorrowPrices) {
-      const tomorrowPlan = plan.map(p => ({
-        ...p,
-        price: tomorrowPriceMap[p.hour] ?? null,
-      }));
-      tomorrowChart = this._renderPriceChart(tomorrowPlan, { chargeThreshold: ctCharge, dischargeThreshold: ctDischarge });
-    }
+    // Tomorrow chart: render if we have plan entries (even without prices, shows actions)
+    const tomorrowHasAnyPrices = tomorrowPlan.some(p => p.price !== undefined && p.price !== null);
+    const tomorrowChart = tomorrowHasAnyPrices
+      ? this._renderPriceChart(tomorrowPlan, { chargeThreshold: ctCharge, dischargeThreshold: ctDischarge })
+      : null;
 
     if (!todayChart && !tomorrowChart) {
       return html`
@@ -769,12 +785,12 @@ class VictronChargeControllerCard extends LitElement {
         ` : nothing}
 
         ${todayChart ? html`
-          <div class="plan-chart-label">Today</div>
+          <div class="plan-chart-label">Today <span class="plan-chart-date">${todayDate}</span></div>
           ${todayChart}
         ` : nothing}
 
         ${tomorrowChart ? html`
-          <div class="plan-chart-label">Tomorrow</div>
+          <div class="plan-chart-label">Tomorrow <span class="plan-chart-date">${tomorrowDate}</span></div>
           ${tomorrowChart}
         ` : html`
           <div class="plan-chart-label plan-chart-label-muted">Tomorrow — prices not yet available</div>
@@ -1195,6 +1211,11 @@ class VictronChargeControllerCard extends LitElement {
         color: var(--vcc-text2, #757575);
         font-weight: 400;
         font-style: italic;
+      }
+      .plan-chart-date {
+        font-weight: 400;
+        color: var(--vcc-text2, #757575);
+        font-size: 0.9em;
       }
       .plan-current-price {
         display: flex;
