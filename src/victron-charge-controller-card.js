@@ -543,17 +543,23 @@ class VictronChargeControllerCard extends LitElement {
 
   // ── Shared chart renderer ────────────────────────────────
 
-  _renderPriceChart(enrichedPlan, { showCurrentHour = false, chargeThreshold = null, dischargeThreshold = null } = {}) {
+  _renderPriceChart(enrichedPlan, { showCurrentHour = false, chargeThreshold = null, dischargeThreshold = null, forcedScaleMin = null, forcedScaleMax = null } = {}) {
     // Extract prices and determine scale
     const prices = enrichedPlan.map(p => p.price ?? null);
     const validPrices = prices.filter(p => p !== null);
     if (validPrices.length === 0) return null;
 
-    const minPrice = Math.min(...validPrices);
-    const maxPrice = Math.max(...validPrices);
-    const priceRange = maxPrice - minPrice || 1;
-    const scaleMin = Math.floor(minPrice - priceRange * 0.1);
-    const scaleMax = Math.ceil(maxPrice + priceRange * 0.1);
+    let scaleMin, scaleMax;
+    if (forcedScaleMin !== null && forcedScaleMax !== null) {
+      scaleMin = forcedScaleMin;
+      scaleMax = forcedScaleMax;
+    } else {
+      const minPrice = Math.min(...validPrices);
+      const maxPrice = Math.max(...validPrices);
+      const priceRange = maxPrice - minPrice || 1;
+      scaleMin = Math.floor(minPrice - priceRange * 0.1);
+      scaleMax = Math.ceil(maxPrice + priceRange * 0.1);
+    }
     const scaleRange = scaleMax - scaleMin || 1;
 
     const currentHour = new Date().getHours();
@@ -758,12 +764,27 @@ class VictronChargeControllerCard extends LitElement {
     }
 
     const currentHour = new Date().getHours();
-    const todayChart = this._renderPriceChart(todayPlan, { showCurrentHour: true, chargeThreshold: ctCharge, dischargeThreshold: ctDischarge });
+
+    // Compute shared y-axis scale across both plans
+    const allValidPrices = [...todayPlan, ...tomorrowPlan]
+      .map(p => p.price ?? null)
+      .filter(p => p !== null);
+    let sharedScaleMin = null;
+    let sharedScaleMax = null;
+    if (allValidPrices.length > 0) {
+      const minP = Math.min(...allValidPrices);
+      const maxP = Math.max(...allValidPrices);
+      const pRange = maxP - minP || 1;
+      sharedScaleMin = Math.floor(minP - pRange * 0.1);
+      sharedScaleMax = Math.ceil(maxP + pRange * 0.1);
+    }
+
+    const todayChart = this._renderPriceChart(todayPlan, { showCurrentHour: true, chargeThreshold: ctCharge, dischargeThreshold: ctDischarge, forcedScaleMin: sharedScaleMin, forcedScaleMax: sharedScaleMax });
 
     // Tomorrow chart: render if we have plan entries (even without prices, shows actions)
     const tomorrowHasAnyPrices = tomorrowPlan.some(p => p.price !== undefined && p.price !== null);
     const tomorrowChart = tomorrowHasAnyPrices
-      ? this._renderPriceChart(tomorrowPlan, { chargeThreshold: ctCharge, dischargeThreshold: ctDischarge })
+      ? this._renderPriceChart(tomorrowPlan, { chargeThreshold: ctCharge, dischargeThreshold: ctDischarge, forcedScaleMin: sharedScaleMin, forcedScaleMax: sharedScaleMax })
       : null;
 
     if (!todayChart && !tomorrowChart) {
