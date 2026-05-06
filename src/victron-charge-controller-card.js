@@ -543,17 +543,23 @@ class VictronChargeControllerCard extends LitElement {
 
   // ── Shared chart renderer ────────────────────────────────
 
-  _renderPriceChart(enrichedPlan, { showCurrentHour = false, chargeThreshold = null, dischargeThreshold = null } = {}) {
+  _renderPriceChart(enrichedPlan, { showCurrentHour = false, chargeThreshold = null, dischargeThreshold = null, forcedScaleMin = null, forcedScaleMax = null } = {}) {
     // Extract prices and determine scale
     const prices = enrichedPlan.map(p => p.price ?? null);
     const validPrices = prices.filter(p => p !== null);
     if (validPrices.length === 0) return null;
 
-    const minPrice = Math.min(...validPrices);
-    const maxPrice = Math.max(...validPrices);
-    const priceRange = maxPrice - minPrice || 1;
-    const scaleMin = Math.floor(minPrice - priceRange * 0.1);
-    const scaleMax = Math.ceil(maxPrice + priceRange * 0.1);
+    let scaleMin, scaleMax;
+    if (forcedScaleMin !== null && forcedScaleMax !== null) {
+      scaleMin = forcedScaleMin;
+      scaleMax = forcedScaleMax;
+    } else {
+      const minPrice = Math.min(...validPrices);
+      const maxPrice = Math.max(...validPrices);
+      const priceRange = maxPrice - minPrice || 1;
+      scaleMin = Math.floor(minPrice - priceRange * 0.1);
+      scaleMax = Math.ceil(maxPrice + priceRange * 0.1);
+    }
     const scaleRange = scaleMax - scaleMin || 1;
 
     const currentHour = new Date().getHours();
