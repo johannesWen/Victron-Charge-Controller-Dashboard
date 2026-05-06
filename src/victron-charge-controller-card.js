@@ -543,23 +543,17 @@ class VictronChargeControllerCard extends LitElement {
 
   // ── Shared chart renderer ────────────────────────────────
 
-  _renderPriceChart(enrichedPlan, { showCurrentHour = false, chargeThreshold = null, dischargeThreshold = null, forcedScaleMin = null, forcedScaleMax = null } = {}) {
+  _renderPriceChart(enrichedPlan, { showCurrentHour = false, chargeThreshold = null, dischargeThreshold = null } = {}) {
     // Extract prices and determine scale
     const prices = enrichedPlan.map(p => p.price ?? null);
     const validPrices = prices.filter(p => p !== null);
     if (validPrices.length === 0) return null;
 
-    let scaleMin, scaleMax;
-    if (forcedScaleMin !== null && forcedScaleMax !== null) {
-      scaleMin = forcedScaleMin;
-      scaleMax = forcedScaleMax;
-    } else {
-      const minPrice = Math.min(...validPrices);
-      const maxPrice = Math.max(...validPrices);
-      const priceRange = maxPrice - minPrice || 1;
-      scaleMin = Math.floor(minPrice - priceRange * 0.1);
-      scaleMax = Math.ceil(maxPrice + priceRange * 0.1);
-    }
+    const minPrice = Math.min(...validPrices);
+    const maxPrice = Math.max(...validPrices);
+    const priceRange = maxPrice - minPrice || 1;
+    const scaleMin = Math.floor(minPrice - priceRange * 0.1);
+    const scaleMax = Math.ceil(maxPrice + priceRange * 0.1);
     const scaleRange = scaleMax - scaleMin || 1;
 
     const currentHour = new Date().getHours();
@@ -784,7 +778,7 @@ class VictronChargeControllerCard extends LitElement {
     // Tomorrow chart: render if we have plan entries (even without prices, shows actions)
     const tomorrowHasAnyPrices = tomorrowPlan.some(p => p.price !== undefined && p.price !== null);
     const tomorrowChart = tomorrowHasAnyPrices
-      ? this._renderPriceChart(tomorrowPlan, { chargeThreshold: ctCharge, dischargeThreshold: ctDischarge, forcedScaleMin: sharedScaleMin, forcedScaleMax: sharedScaleMax })
+      ? this._renderPriceChart(tomorrowPlan, { chargeThreshold: ctCharge, dischargeThreshold: ctDischarge })
       : null;
 
     if (!todayChart && !tomorrowChart) {
@@ -807,11 +801,6 @@ class VictronChargeControllerCard extends LitElement {
             ` : nothing}
           </div>
           <div class="plan-toolbar-right">
-            <button class="action-btn plan-recalc-btn"
-              @click=${() => this._pressButton('recalculate_schedule')}>
-              <ha-icon icon="mdi:refresh"></ha-icon>
-              Recalculate
-            </button>
             ${(() => {
               const lastUpdate = this._state('sensor', 'last_schedule_update');
               if (!lastUpdate || lastUpdate.state === 'unknown' || lastUpdate.state === 'unavailable') return nothing;
@@ -825,6 +814,11 @@ class VictronChargeControllerCard extends LitElement {
               else { const h = Math.floor(diffMin / 60); ago = `${h}h ${diffMin % 60}m ago`; }
               return html`<span class="plan-last-update">Updated: ${ago}</span>`;
             })()}
+            <button class="action-btn plan-recalc-btn"
+              @click=${() => this._pressButton('recalculate_schedule')}>
+              <ha-icon icon="mdi:refresh"></ha-icon>
+              Recalculate
+            </button>
           </div>
         </div>
 
@@ -1269,9 +1263,9 @@ class VictronChargeControllerCard extends LitElement {
       }
       .plan-toolbar-right {
         display: flex;
-        flex-direction: column;
-        align-items: flex-end;
-        gap: 2px;
+        flex-direction: row;
+        align-items: center;
+        gap: 8px;
       }
       .plan-recalc-btn {
         font-size: 0.78em;
@@ -1282,7 +1276,7 @@ class VictronChargeControllerCard extends LitElement {
         color: var(--vcc-accent, #03a9f4);
       }
       .plan-last-update {
-        font-size: 0.72em;
+        font-size: 0.75em;
         color: var(--vcc-text2, #757575);
       }
       .plan-current-price {
