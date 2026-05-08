@@ -8,7 +8,7 @@ A custom [Home Assistant](https://www.home-assistant.io/) Lovelace dashboard car
 
 | Settings Card | Plan Card |
 |:---:|:---:| 
-| <a href="assets/screenshots/settings_card.png"><img src="assets/screenshots/settings_card.png" width="400"></a> | <a href="assets/screenshots/settings_card.png"><img src="assets/screenshots/plan_card.png" width="400"></a> |
+| <a href="assets/screenshots/settings_card.png"><img src="https://raw.githubusercontent.com/johannesWen/Victron-Charge-Controller-Dashboard/main/assets/screenshots/settings_card.png" width="400"></a> | <a href="assets/screenshots/settings_card.png"><img src="https://raw.githubusercontent.com/johannesWen/Victron-Charge-Controller-Dashboard/refs/heads/main/assets/screenshots/plan_card.png" width="400"></a> |
 
 
 ## Features
