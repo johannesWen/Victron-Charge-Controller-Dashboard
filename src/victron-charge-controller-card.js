@@ -545,8 +545,11 @@ class VictronChargeControllerCard extends LitElement {
 
   _renderPriceChart(enrichedPlan, { showCurrentHour = false, chargeThreshold = null, dischargeThreshold = null, forcedScaleMin = null, forcedScaleMax = null } = {}) {
     // Extract prices and determine scale
-    const prices = enrichedPlan.map(p => p.price ?? null);
-    const validPrices = prices.filter(p => p !== null);
+    const validPrices = enrichedPlan
+      .map(p => p.price)
+      .filter(p => p !== null && p !== undefined)
+      .map(Number)
+      .filter(Number.isFinite);
     if (validPrices.length === 0) return null;
 
     let scaleMin, scaleMax;
@@ -614,8 +617,8 @@ class VictronChargeControllerCard extends LitElement {
 
         <!-- Bars -->
         ${enrichedPlan.map((entry, i) => {
-          const price = entry.price;
-          if (price === null || price === undefined) return nothing;
+          const price = Number(entry.price);
+          if (!Number.isFinite(price)) return nothing;
           const h = entry.hour ?? i;
           const x = padL + i * barW + barGap / 2;
           const w = barW - barGap;
@@ -767,8 +770,10 @@ class VictronChargeControllerCard extends LitElement {
 
     // Compute shared y-axis scale across both plans
     const allValidPrices = [...todayPlan, ...tomorrowPlan]
-      .map(p => p.price ?? null)
-      .filter(p => p !== null);
+      .map(p => p.price)
+      .filter(p => p !== null && p !== undefined)
+      .map(Number)
+      .filter(Number.isFinite);
     let sharedScaleMin = null;
     let sharedScaleMax = null;
     if (allValidPrices.length > 0) {
@@ -784,7 +789,7 @@ class VictronChargeControllerCard extends LitElement {
     // Tomorrow chart: render if we have plan entries (even without prices, shows actions)
     const tomorrowHasAnyPrices = tomorrowPlan.some(p => p.price !== undefined && p.price !== null);
     const tomorrowChart = tomorrowHasAnyPrices
-      ? this._renderPriceChart(tomorrowPlan, { chargeThreshold: ctCharge, dischargeThreshold: ctDischarge })
+      ? this._renderPriceChart(tomorrowPlan, { chargeThreshold: ctCharge, dischargeThreshold: ctDischarge, forcedScaleMin: sharedScaleMin, forcedScaleMax: sharedScaleMax })
       : null;
 
     if (!todayChart && !tomorrowChart) {
