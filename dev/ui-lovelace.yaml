@@ -19,6 +19,10 @@ views:
             name: Grid Setpoint
           - entity: input_number.max_grid_feed_in_store
             name: Max Grid Feed-in
+          - entity: input_number.grid_consumption_kwh_value
+            name: Grid Consumption kWh
+          - entity: input_number.grid_feed_in_kwh_value
+            name: Grid Feed-in kWh
 
       - type: sensor
         entity: sensor.epex_spot_price
