@@ -560,8 +560,8 @@ class VictronChargeControllerCard extends LitElement {
       const minPrice = Math.min(...validPrices);
       const maxPrice = Math.max(...validPrices);
       const priceRange = maxPrice - minPrice || 1;
-      scaleMin = Math.floor(minPrice - priceRange * 0.1);
-      scaleMax = Math.ceil(maxPrice + priceRange * 0.1);
+      scaleMin = Math.min(-1, minPrice);
+      scaleMax = Math.max(1, Math.ceil(maxPrice + priceRange * 0.1));
     }
     const scaleRange = scaleMax - scaleMin || 1;
 
@@ -780,8 +780,8 @@ class VictronChargeControllerCard extends LitElement {
       const minP = Math.min(...allValidPrices);
       const maxP = Math.max(...allValidPrices);
       const pRange = maxP - minP || 1;
-      sharedScaleMin = Math.floor(minP - pRange * 0.1);
-      sharedScaleMax = Math.ceil(maxP + pRange * 0.1);
+      sharedScaleMin = Math.min(-1, minP);
+      sharedScaleMax = Math.max(1, Math.ceil(maxP + pRange * 0.1));
     }
 
     const todayChart = this._renderPriceChart(todayPlan, { showCurrentHour: true, chargeThreshold: ctCharge, dischargeThreshold: ctDischarge, forcedScaleMin: sharedScaleMin, forcedScaleMax: sharedScaleMax });
