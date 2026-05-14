@@ -635,10 +635,19 @@ class VictronChargeControllerCard extends LitElement {
       switch (action) {
         case 'charge':              return 'var(--vcc-success, #4caf50)';
         case 'discharge':           return 'var(--vcc-warning, #ff9800)';
-        case 'blocked':
-        case 'blocked_charging':
-        case 'blocked_discharging': return 'var(--vcc-error, #f44336)';
+        case 'blocked_charging':    return 'var(--vcc-blocked-charging, #2e7d32)';
+        case 'blocked_discharging': return 'var(--vcc-blocked-discharging, #ef6c00)';
+        case 'blocked':             return 'var(--vcc-blocked-both, #f44336)';
         default:                    return 'var(--vcc-disabled, #bdbdbd)';
+      }
+    };
+
+    const actionFill = (action) => {
+      switch (action) {
+        case 'blocked_charging':    return 'url(#plan-hatch-blocked-charging)';
+        case 'blocked_discharging': return 'url(#plan-hatch-blocked-discharging)';
+        case 'blocked':             return 'url(#plan-hatch-blocked-both)';
+        default:                    return actionColor(action);
       }
     };
 
@@ -653,6 +662,24 @@ class VictronChargeControllerCard extends LitElement {
 
     return svg`
       <svg class="plan-chart" viewBox="0 0 ${chartW} ${chartH}" preserveAspectRatio="xMidYMid meet">
+        <defs>
+          <pattern id="plan-hatch-blocked-charging" patternUnits="userSpaceOnUse" width="6" height="6">
+            <rect width="6" height="6" fill="${actionColor('blocked_charging')}" />
+            <path d="M-1,7 L7,-1 M4,8 L8,4"
+              stroke="var(--vcc-bg, #fff)" stroke-width="1.4" opacity="0.7" />
+          </pattern>
+          <pattern id="plan-hatch-blocked-discharging" patternUnits="userSpaceOnUse" width="6" height="6">
+            <rect width="6" height="6" fill="${actionColor('blocked_discharging')}" />
+            <path d="M-1,7 L7,-1 M4,8 L8,4"
+              stroke="var(--vcc-bg, #fff)" stroke-width="1.4" opacity="0.7" />
+          </pattern>
+          <pattern id="plan-hatch-blocked-both" patternUnits="userSpaceOnUse" width="6" height="6">
+            <rect width="6" height="6" fill="${actionColor('blocked')}" />
+            <path d="M-1,7 L7,-1 M4,8 L8,4"
+              stroke="var(--vcc-bg, #fff)" stroke-width="1.4" opacity="0.7" />
+          </pattern>
+        </defs>
+
         <!-- Grid lines -->
         ${yTicks.map(t => svg`
           <line x1="${padL}" y1="${t.y}" x2="${chartW - padR}" y2="${t.y}"
@@ -682,7 +709,7 @@ class VictronChargeControllerCard extends LitElement {
           return svg`
             <rect
               x="${x}" y="${barY}" width="${w}" height="${barH}"
-              fill="${isPast ? actionColor('idle') : actionColor(entry.action)}"
+              fill="${isPast ? actionColor('idle') : actionFill(entry.action)}"
               opacity="${isPast ? 0.35 : (isCurrent ? 1 : 0.7)}"
               rx="1.5"
             />
@@ -911,8 +938,16 @@ class VictronChargeControllerCard extends LitElement {
             <span>Idle</span>
           </div>
           <div class="plan-legend-item">
-            <span class="plan-legend-dot" style="background: var(--vcc-error)"></span>
-            <span>Blocked</span>
+            <span class="plan-legend-dot plan-legend-dot-hatched" style="--legend-color: var(--vcc-blocked-charging)"></span>
+            <span>Blocked Charge</span>
+          </div>
+          <div class="plan-legend-item">
+            <span class="plan-legend-dot plan-legend-dot-hatched" style="--legend-color: var(--vcc-blocked-discharging)"></span>
+            <span>Blocked Discharge</span>
+          </div>
+          <div class="plan-legend-item">
+            <span class="plan-legend-dot plan-legend-dot-hatched" style="--legend-color: var(--vcc-blocked-both)"></span>
+            <span>Blocked Both</span>
           </div>
           <div class="plan-legend-item">
             <span class="plan-legend-dot plan-legend-dot-current"></span>
@@ -1000,6 +1035,9 @@ class VictronChargeControllerCard extends LitElement {
         --vcc-error:    var(--error-color, #f44336);
         --vcc-info:     var(--info-color, #2196f3);
         --vcc-disabled: var(--disabled-color, #bdbdbd);
+        --vcc-blocked-charging:    var(--success-color, #2e7d32);
+        --vcc-blocked-discharging: var(--warning-color, #ef6c00);
+        --vcc-blocked-both:        var(--error-color, #f44336);
       }
       ha-card { overflow: hidden; }
 
@@ -1303,6 +1341,15 @@ class VictronChargeControllerCard extends LitElement {
       .plan-legend-dot {
         width: 10px; height: 10px; border-radius: 2px;
         flex-shrink: 0;
+      }
+      .plan-legend-dot-hatched {
+        background:
+          repeating-linear-gradient(
+            135deg,
+            transparent 0 3px,
+            var(--vcc-bg, #fff) 3px 4.5px
+          ),
+          var(--legend-color, var(--vcc-error, #f44336));
       }
       .plan-legend-dot-current {
         background: none;
