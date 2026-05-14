@@ -54,8 +54,14 @@ class VictronChargeControllerCard extends LitElement {
     this._thresholdHoldTimer = null;
     this._onThresholdPointerMoveBound = this._onThresholdPointerMove.bind(this);
     this._onThresholdPointerUpBound = this._onThresholdPointerUp.bind(this);
+    this._onThresholdTouchMoveBound = this._onThresholdTouchMove.bind(this);
     // Pending threshold overrides (until HA entity catches up)
     this._pendingThresholds = {};
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    this._finishThresholdDrag(false);
   }
 
   // ── Lovelace lifecycle ──────────────────────────────────
@@ -339,36 +345,93 @@ class VictronChargeControllerCard extends LitElement {
     return svgPt.y;
   }
 
+  _addThresholdDragListeners() {
+    const opts = { passive: false, capture: true };
+    document.addEventListener('pointermove', this._onThresholdPointerMoveBound, opts);
+    document.addEventListener('pointerup', this._onThresholdPointerUpBound, opts);
+    document.addEventListener('pointercancel', this._onThresholdPointerUpBound, opts);
+    window.addEventListener('touchmove', this._onThresholdTouchMoveBound, opts);
+  }
+
+  _removeThresholdDragListeners() {
+    document.removeEventListener('pointermove', this._onThresholdPointerMoveBound, true);
+    document.removeEventListener('pointerup', this._onThresholdPointerUpBound, true);
+    document.removeEventListener('pointercancel', this._onThresholdPointerUpBound, true);
+    window.removeEventListener('touchmove', this._onThresholdTouchMoveBound, true);
+  }
+
+  _finishThresholdDrag(commit = true) {
+    this._removeThresholdDragListeners();
+
+    if (this._thresholdHoldTimer) {
+      clearTimeout(this._thresholdHoldTimer);
+      this._thresholdHoldTimer = null;
+    }
+
+    if (!this._thresholdDrag) return;
+    const { type, unlocked, price, group, pointerId } = this._thresholdDrag;
+    group.classList.remove('threshold-holding', 'threshold-unlocked');
+    this.classList.remove('threshold-drag-active');
+
+    if (pointerId !== undefined && group.hasPointerCapture) {
+      try {
+        if (group.hasPointerCapture(pointerId)) group.releasePointerCapture(pointerId);
+      } catch (_err) {
+        // Some mobile WebViews throw if the pointer has already been canceled.
+      }
+    }
+
+    if (commit && unlocked && price !== null) {
+      const key = type === 'charge' ? 'charge_price_threshold' : 'discharge_price_threshold';
+      const rounded = Math.round(price * 100) / 100;
+      this._setNumber(key, rounded);
+      // Store pending value so both charts update immediately
+      this._pendingThresholds[type] = rounded;
+      this.requestUpdate();
+    }
+
+    this._thresholdDrag = null;
+  }
+
   _onThresholdPointerDown(e, type, scale) {
     e.preventDefault();
     e.stopPropagation();
+    if (this._thresholdDrag) this._finishThresholdDrag(false);
+
     const group = e.currentTarget;
     const svgEl = group.closest('svg');
+    const pointerId = e.pointerId;
 
     // Start hold timer
     if (this._thresholdHoldTimer) clearTimeout(this._thresholdHoldTimer);
-    this._thresholdDrag = { type, scale, group, svgEl, unlocked: false, price: null };
+    this._thresholdDrag = { type, scale, group, svgEl, pointerId, unlocked: false, price: null };
     group.classList.add('threshold-holding');
+    this.classList.add('threshold-drag-active');
+    this._addThresholdDragListeners();
+
+    if (group.setPointerCapture && pointerId !== undefined) {
+      try {
+        group.setPointerCapture(pointerId);
+      } catch (_err) {
+        // Pointer capture is best effort in embedded mobile WebViews.
+      }
+    }
 
     this._thresholdHoldTimer = setTimeout(() => {
       if (!this._thresholdDrag) return;
       this._thresholdDrag.unlocked = true;
       group.classList.remove('threshold-holding');
       group.classList.add('threshold-unlocked');
-      // Add move/up listeners to document
-      document.addEventListener('pointermove', this._onThresholdPointerMoveBound);
-      document.addEventListener('pointerup', this._onThresholdPointerUpBound);
-      document.addEventListener('pointercancel', this._onThresholdPointerUpBound);
     }, 1000);
-
-    // If released before 1s, cancel
-    document.addEventListener('pointerup', this._onThresholdPointerUpBound);
-    document.addEventListener('pointercancel', this._onThresholdPointerUpBound);
   }
 
   _onThresholdPointerMove(e) {
-    if (!this._thresholdDrag || !this._thresholdDrag.unlocked) return;
+    if (!this._thresholdDrag) return;
+    if (this._thresholdDrag.pointerId !== undefined && e.pointerId !== this._thresholdDrag.pointerId) return;
     e.preventDefault();
+    e.stopPropagation();
+    if (!this._thresholdDrag.unlocked) return;
+
     const { scale, group, svgEl } = this._thresholdDrag;
     const svgY = this._clientToSvgY(e.clientY, svgEl);
     let price = this._svgYToPrice(svgY, scale);
@@ -388,30 +451,18 @@ class VictronChargeControllerCard extends LitElement {
     }
   }
 
-  _onThresholdPointerUp(e) {
-    document.removeEventListener('pointermove', this._onThresholdPointerMoveBound);
-    document.removeEventListener('pointerup', this._onThresholdPointerUpBound);
-    document.removeEventListener('pointercancel', this._onThresholdPointerUpBound);
-
-    if (this._thresholdHoldTimer) {
-      clearTimeout(this._thresholdHoldTimer);
-      this._thresholdHoldTimer = null;
-    }
-
+  _onThresholdTouchMove(e) {
     if (!this._thresholdDrag) return;
-    const { type, unlocked, price, group } = this._thresholdDrag;
-    group.classList.remove('threshold-holding', 'threshold-unlocked');
+    if (e.cancelable) e.preventDefault();
+    e.stopPropagation();
+  }
 
-    if (unlocked && price !== null) {
-      const key = type === 'charge' ? 'charge_price_threshold' : 'discharge_price_threshold';
-      const rounded = Math.round(price * 100) / 100;
-      this._setNumber(key, rounded);
-      // Store pending value so both charts update immediately
-      this._pendingThresholds[type] = rounded;
-      this.requestUpdate();
-    }
-
-    this._thresholdDrag = null;
+  _onThresholdPointerUp(e) {
+    if (!this._thresholdDrag) return;
+    if (this._thresholdDrag.pointerId !== undefined && e.pointerId !== this._thresholdDrag.pointerId) return;
+    e.preventDefault();
+    e.stopPropagation();
+    this._finishThresholdDrag(true);
   }
 
   _renderHourChips(type) {
@@ -657,7 +708,7 @@ class VictronChargeControllerCard extends LitElement {
           <g class="threshold-line-group" data-type="charge"
             @pointerdown=${(e) => this._onThresholdPointerDown(e, 'charge', chargeScale)}>
             <line x1="${padL}" y1="${yPos(chargeThreshold)}" x2="${chartW - padR}" y2="${yPos(chargeThreshold)}"
-              stroke="transparent" stroke-width="16" class="threshold-hit-area" />
+              stroke="transparent" stroke-width="22" class="threshold-hit-area" />
             <line x1="${padL}" y1="${yPos(chargeThreshold)}" x2="${chartW - padR}" y2="${yPos(chargeThreshold)}"
               stroke="var(--vcc-success, #4caf50)" stroke-width="1.5" stroke-dasharray="6,4" class="threshold-visible-line" />
             <text x="${chartW - padR + 4}" y="${yPos(chargeThreshold) + 3.5}" text-anchor="start"
@@ -673,7 +724,7 @@ class VictronChargeControllerCard extends LitElement {
           <g class="threshold-line-group" data-type="discharge"
             @pointerdown=${(e) => this._onThresholdPointerDown(e, 'discharge', dischargeScale)}>
             <line x1="${padL}" y1="${yPos(dischargeThreshold)}" x2="${chartW - padR}" y2="${yPos(dischargeThreshold)}"
-              stroke="transparent" stroke-width="16" class="threshold-hit-area" />
+              stroke="transparent" stroke-width="22" class="threshold-hit-area" />
             <line x1="${padL}" y1="${yPos(dischargeThreshold)}" x2="${chartW - padR}" y2="${yPos(dischargeThreshold)}"
               stroke="var(--vcc-warning, #ff9800)" stroke-width="1.5" stroke-dasharray="6,4" class="threshold-visible-line" />
             <text x="${chartW - padR + 4}" y="${yPos(dischargeThreshold) + 3.5}" text-anchor="start"
@@ -1206,6 +1257,16 @@ class VictronChargeControllerCard extends LitElement {
       }
       .threshold-line-group {
         cursor: grab; touch-action: none;
+        -webkit-user-select: none; user-select: none;
+      }
+      .threshold-hit-area,
+      .threshold-visible-line,
+      .plan-threshold-label {
+        touch-action: none;
+        -webkit-user-select: none; user-select: none;
+      }
+      .threshold-hit-area {
+        pointer-events: stroke;
       }
       .threshold-line-group .threshold-visible-line {
         transition: stroke-width 0.2s;
@@ -1219,6 +1280,9 @@ class VictronChargeControllerCard extends LitElement {
       }
       .threshold-line-group.threshold-unlocked {
         cursor: ns-resize;
+      }
+      :host(.threshold-drag-active) .plan-chart-container {
+        touch-action: none;
       }
       @keyframes threshold-pulse {
         0% { stroke-opacity: 0.5; }
