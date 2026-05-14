@@ -20,8 +20,9 @@ A custom [Home Assistant](https://www.home-assistant.io/) Lovelace dashboard car
 - **Auto mode tuning** — Cheapest/expensive hours, price thresholds for charge and discharge
 - **Grid feed-in control** — Enable/disable feed-in, set price threshold and power limits
 - **Blocked hours** — Visual hour-chip grid to block charging or discharging during specific hours
+- **Cost / revenue chart** — Plot grid energy cost and revenue from Home Assistant long-term statistics
 - **Action buttons** — Recalculate schedule or clear the current schedule
-- **Visual editor** — Configure the card title and entity prefix directly from the Lovelace UI
+- **Visual editor** — Choose the card view directly from the Lovelace UI
 
 ## Prerequisites
 
@@ -60,7 +61,7 @@ Add the card to your dashboard via the UI editor or YAML.
 ### UI Editor
 
 1. Edit your dashboard → **Add Card** → search for **Victron Charge Controller**
-2. Configure the title and entity prefix in the visual editor
+2. Choose the Settings, Plan, or Costs view in the visual editor
 
 ### YAML
 
@@ -68,12 +69,14 @@ Add the card to your dashboard via the UI editor or YAML.
 type: custom:victron-charge-controller-card
 title: Victron Charge Control
 entity_prefix: victron_charge_control
+view: settings
 ```
 
 | Option          | Type   | Default                    | Description                                        |
 | --------------- | ------ | -------------------------- | -------------------------------------------------- |
 | `title`         | string | `Victron Charge Control`   | Card title displayed in the header                 |
 | `entity_prefix` | string | `victron_charge_control`   | Common prefix of all entity IDs from the integration |
+| `view`          | string | `settings`                 | Card view: `settings`, `plan`, or `costs`          |
 
 ## Development
 
