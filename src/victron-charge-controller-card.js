@@ -32,6 +32,13 @@ const FEED_IN_META = {
 
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 
+const COST_RANGES = {
+  day:   { label: 'Day',   period: 'hour',  icon: 'mdi:calendar-today' },
+  week:  { label: 'Week',  period: 'day',   icon: 'mdi:calendar-week' },
+  month: { label: 'Month', period: 'day',   icon: 'mdi:calendar-month' },
+  year:  { label: 'Year',  period: 'month', icon: 'mdi:calendar-range' },
+};
+
 // ────────────────────────────────────────────────────────────
 // Main Card
 // ────────────────────────────────────────────────────────────
@@ -57,6 +64,8 @@ class VictronChargeControllerCard extends LitElement {
     this._onThresholdTouchMoveBound = this._onThresholdTouchMove.bind(this);
     // Pending threshold overrides (until HA entity catches up)
     this._pendingThresholds = {};
+    this._costRange = 'day';
+    this._costStatsState = { status: 'idle', key: null, points: [], error: null };
   }
 
   disconnectedCallback() {
@@ -69,8 +78,8 @@ class VictronChargeControllerCard extends LitElement {
   setConfig(config) {
     this.config = {
       view: 'settings',
-      ...config,
       entity_prefix: DEFAULT_PREFIX,
+      ...config,
     };
   }
 
@@ -102,6 +111,14 @@ class VictronChargeControllerCard extends LitElement {
 
   _callService(domain, service, data) {
     return this.hass.callService(domain, service, data);
+  }
+
+  _callWS(message) {
+    if (this.hass?.callWS) return this.hass.callWS(message);
+    if (this.hass?.connection?.sendMessagePromise) {
+      return this.hass.connection.sendMessagePromise(message);
+    }
+    return Promise.reject(new Error('Home Assistant WebSocket API is unavailable'));
   }
 
   _setNumber(key, value) {
@@ -778,6 +795,356 @@ class VictronChargeControllerCard extends LitElement {
     `;
   }
 
+  // ── Cost statistics view ─────────────────────────────────
+
+  _startOfDay(date) {
+    const d = new Date(date);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
+
+  _addPeriod(date, period, amount) {
+    const d = new Date(date);
+    if (period === 'hour') d.setHours(d.getHours() + amount);
+    else if (period === 'day') d.setDate(d.getDate() + amount);
+    else if (period === 'month') d.setMonth(d.getMonth() + amount);
+    return d;
+  }
+
+  _getCostRangeWindow(range) {
+    const now = new Date();
+    let start;
+    if (range === 'week') {
+      start = this._startOfDay(now);
+      const mondayOffset = (start.getDay() + 6) % 7;
+      start.setDate(start.getDate() - mondayOffset);
+    } else if (range === 'month') {
+      start = new Date(now.getFullYear(), now.getMonth(), 1);
+    } else if (range === 'year') {
+      start = new Date(now.getFullYear(), 0, 1);
+    } else {
+      start = this._startOfDay(now);
+    }
+    return {
+      start,
+      end: now,
+      queryStart: this._addPeriod(start, COST_RANGES[range].period, -1),
+      period: COST_RANGES[range].period,
+    };
+  }
+
+  _costRefreshBucket(range) {
+    const now = new Date();
+    if (range === 'year') return `${now.getFullYear()}-${now.getMonth()}`;
+    if (range === 'month' || range === 'week') return now.toISOString().slice(0, 10);
+    return `${now.toISOString().slice(0, 13)}:${Math.floor(now.getMinutes() / 5)}`;
+  }
+
+  _costStatsKey(range) {
+    const ids = [
+      this._eid('sensor', 'grid_energy_cost'),
+      this._eid('sensor', 'grid_energy_revenue'),
+    ];
+    const window = this._getCostRangeWindow(range);
+    return `${range}|${window.period}|${window.start.getTime()}|${this._costRefreshBucket(range)}|${ids.join(',')}`;
+  }
+
+  _setCostRange(range) {
+    if (!COST_RANGES[range] || this._costRange === range) return;
+    this._costRange = range;
+    this._costStatsState = { status: 'idle', key: null, points: [], error: null };
+    this.requestUpdate();
+  }
+
+  _refreshCostStats() {
+    this._costStatsState = { status: 'idle', key: null, points: [], error: null };
+    this.requestUpdate();
+  }
+
+  _ensureCostStatsLoaded() {
+    const range = COST_RANGES[this._costRange] ? this._costRange : 'day';
+    const key = this._costStatsKey(range);
+    if (this._costStatsState.key === key && this._costStatsState.status !== 'idle') return;
+
+    const window = this._getCostRangeWindow(range);
+    const costId = this._eid('sensor', 'grid_energy_cost');
+    const revenueId = this._eid('sensor', 'grid_energy_revenue');
+
+    this._costStatsState = { status: 'loading', key, points: [], error: null };
+    this.requestUpdate();
+
+    const statsMessage = {
+      type: 'recorder/statistics_during_period',
+      statistic_ids: [costId, revenueId],
+      start_time: window.queryStart.toISOString(),
+      end_time: window.end.toISOString(),
+      period: window.period,
+    };
+
+    this._callWS({
+      ...statsMessage,
+      types: ['change', 'sum'],
+    })
+      .catch(() => this._callWS({
+        ...statsMessage,
+        types: ['sum'],
+      }))
+      .then((result) => {
+        const currentKey = this._costStatsKey(range);
+        if (this._costStatsState.key !== key && currentKey !== key) return;
+        const points = this._buildCostPoints(result || {}, costId, revenueId, window);
+        this._costStatsState = {
+          status: points.length > 0 ? 'ready' : 'empty',
+          key,
+          points,
+          error: null,
+        };
+        this.requestUpdate();
+      })
+      .catch((err) => {
+        if (this._costStatsState.key !== key) return;
+        this._costStatsState = {
+          status: 'error',
+          key,
+          points: [],
+          error: err?.message || 'Unable to load cost statistics',
+        };
+        this.requestUpdate();
+      });
+  }
+
+  _statTimeMs(row) {
+    const raw = row?.start;
+    if (typeof raw === 'number') return raw;
+    const parsed = Date.parse(raw);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  _numberOrNull(value) {
+    const num = Number(value);
+    return Number.isFinite(num) ? num : null;
+  }
+
+  _buildDeltaMap(rows = [], window) {
+    const map = new Map();
+    let previousSum = null;
+    const sorted = [...rows]
+      .map(row => ({ row, startMs: this._statTimeMs(row) }))
+      .filter(item => item.startMs !== null)
+      .sort((a, b) => a.startMs - b.startMs);
+
+    for (const { row, startMs } of sorted) {
+      const sum = this._numberOrNull(row.sum);
+      let delta = this._numberOrNull(row.change);
+      if (delta === null && sum !== null && previousSum !== null) {
+        delta = Math.max(0, sum - previousSum);
+      }
+      if (sum !== null) previousSum = sum;
+      if (startMs < window.start.getTime() || startMs > window.end.getTime()) continue;
+      if (delta !== null) map.set(startMs, Math.max(0, delta));
+    }
+    return map;
+  }
+
+  _buildCostPoints(result, costId, revenueId, window) {
+    const costMap = this._buildDeltaMap(result[costId] || [], window);
+    const revenueMap = this._buildDeltaMap(result[revenueId] || [], window);
+    const starts = [...new Set([...costMap.keys(), ...revenueMap.keys()])].sort((a, b) => a - b);
+    return starts.map(startMs => {
+      const cost = costMap.get(startMs) ?? 0;
+      const revenue = revenueMap.get(startMs) ?? 0;
+      return {
+        startMs,
+        label: this._formatCostBucketLabel(startMs, window.period),
+        cost,
+        revenue,
+        net: revenue - cost,
+      };
+    });
+  }
+
+  _formatCostBucketLabel(startMs, period) {
+    const d = new Date(startMs);
+    if (period === 'hour') return `${String(d.getHours()).padStart(2, '0')}:00`;
+    if (period === 'month') return d.toLocaleDateString(undefined, { month: 'short' });
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  }
+
+  _formatMoney(value, digits = 2) {
+    const amount = Number(value) || 0;
+    return `${amount.toFixed(digits)} EUR`;
+  }
+
+  _formatSignedMoney(value) {
+    const amount = Number(value) || 0;
+    const sign = amount > 0 ? '+' : '';
+    return `${sign}${amount.toFixed(2)} EUR`;
+  }
+
+  _renderCostChart(points) {
+    if (!points.length) return null;
+
+    const chartW = 640;
+    const chartH = 280;
+    const padL = 54;
+    const padR = 24;
+    const padT = 24;
+    const padB = 42;
+    const plotW = chartW - padL - padR;
+    const plotH = chartH - padT - padB;
+    const maxValue = Math.max(0.01, ...points.flatMap(p => [p.cost, p.revenue]));
+    const scaleMax = maxValue * 1.15;
+    const groupW = plotW / points.length;
+    const barGap = Math.min(4, Math.max(1.5, groupW * 0.08));
+    const barW = Math.max(1.5, Math.min(18, (groupW - barGap * 3) / 2));
+    const yPos = (value) => padT + plotH - (value / scaleMax) * plotH;
+
+    const tickCount = 4;
+    const yTicks = Array.from({ length: tickCount + 1 }, (_, i) => {
+      const val = (scaleMax * i) / tickCount;
+      return { val, y: yPos(val) };
+    });
+
+    const labelEvery = Math.max(1, Math.ceil(points.length / 8));
+
+    return svg`
+      <svg class="cost-chart" viewBox="0 0 ${chartW} ${chartH}" preserveAspectRatio="xMidYMid meet">
+        ${yTicks.map(t => svg`
+          <line x1="${padL}" y1="${t.y}" x2="${chartW - padR}" y2="${t.y}"
+            stroke="var(--vcc-border, #e0e0e0)" stroke-width="0.5"
+            stroke-dasharray="${t.val === 0 ? 'none' : '4,3'}" />
+          <text x="${padL - 7}" y="${t.y + 3.5}" text-anchor="end"
+            class="cost-axis-label">${this._formatMoney(t.val, t.val >= 10 ? 0 : 1).replace(' EUR', '')}</text>
+        `)}
+
+        ${points.map((point, i) => {
+          const xCenter = padL + i * groupW + groupW / 2;
+          const costH = padT + plotH - yPos(point.cost);
+          const revenueH = padT + plotH - yPos(point.revenue);
+          return svg`
+            <rect x="${xCenter - barW - barGap / 2}" y="${yPos(point.cost)}"
+              width="${barW}" height="${Math.max(1, costH)}"
+              fill="var(--vcc-error, #f44336)" opacity="0.72" rx="1.5">
+              <title>${point.label} cost: ${this._formatMoney(point.cost)}</title>
+            </rect>
+            <rect x="${xCenter + barGap / 2}" y="${yPos(point.revenue)}"
+              width="${barW}" height="${Math.max(1, revenueH)}"
+              fill="var(--vcc-success, #4caf50)" opacity="0.78" rx="1.5">
+              <title>${point.label} revenue: ${this._formatMoney(point.revenue)}</title>
+            </rect>
+            ${(i % labelEvery === 0 || i === points.length - 1) ? svg`
+              <text x="${xCenter}" y="${chartH - 10}" text-anchor="middle"
+                class="cost-axis-label">${point.label}</text>
+            ` : nothing}
+          `;
+        })}
+
+        <text x="${padL - 7}" y="${padT - 10}" text-anchor="end"
+          class="cost-axis-unit">EUR</text>
+      </svg>
+    `;
+  }
+
+  _renderCostSummary(points) {
+    const totalCost = points.reduce((sum, p) => sum + p.cost, 0);
+    const totalRevenue = points.reduce((sum, p) => sum + p.revenue, 0);
+    const net = totalRevenue - totalCost;
+    return html`
+      <div class="cost-summary">
+        <div class="cost-summary-item cost">
+          <span>Cost</span>
+          <strong>${this._formatMoney(totalCost)}</strong>
+        </div>
+        <div class="cost-summary-item revenue">
+          <span>Revenue</span>
+          <strong>${this._formatMoney(totalRevenue)}</strong>
+        </div>
+        <div class="cost-summary-item ${net >= 0 ? 'positive' : 'negative'}">
+          <span>Net</span>
+          <strong>${this._formatSignedMoney(net)}</strong>
+        </div>
+      </div>
+    `;
+  }
+
+  _renderCostsView() {
+    const costEntity = this._state('sensor', 'grid_energy_cost');
+    const revenueEntity = this._state('sensor', 'grid_energy_revenue');
+    if (!costEntity || !revenueEntity) {
+      return html`
+        <div class="warning">
+          <ha-icon icon="mdi:alert-outline"></ha-icon>
+          <span>Grid energy cost and revenue sensors are not available for this entity prefix.</span>
+        </div>`;
+    }
+
+    this._ensureCostStatsLoaded();
+
+    const range = COST_RANGES[this._costRange] ? this._costRange : 'day';
+    const state = this._costStatsState;
+    const points = state.points || [];
+
+    return html`
+      <div class="costs-container">
+        <div class="costs-toolbar">
+          <div class="cost-range-group">
+            ${Object.entries(COST_RANGES).map(([key, meta]) => html`
+              <button
+                class="cost-range-btn ${range === key ? 'active' : ''}"
+                @click=${() => this._setCostRange(key)}
+                title=${meta.label}
+              >
+                <ha-icon .icon=${meta.icon}></ha-icon>
+                <span>${meta.label}</span>
+              </button>
+            `)}
+          </div>
+          <button class="action-btn plan-recalc-btn"
+            @click=${() => this._refreshCostStats()}
+            title="Refresh statistics">
+            <ha-icon icon="mdi:refresh"></ha-icon>
+            Refresh
+          </button>
+        </div>
+
+        ${state.status === 'loading' ? html`
+          <div class="cost-loading">
+            <ha-icon icon="mdi:chart-bar"></ha-icon>
+            <span>Loading statistics...</span>
+          </div>
+        ` : nothing}
+
+        ${state.status === 'error' ? html`
+          <div class="warning">
+            <ha-icon icon="mdi:alert-outline"></ha-icon>
+            <span>${state.error || 'Unable to load cost statistics.'}</span>
+          </div>
+        ` : nothing}
+
+        ${state.status === 'empty' ? html`
+          <div class="warning">
+            <ha-icon icon="mdi:alert-outline"></ha-icon>
+            <span>No cost statistics are available for this range. Check that recorder includes these sensors and has enough statistics data.</span>
+          </div>
+        ` : nothing}
+
+        ${state.status === 'ready' ? html`
+          ${this._renderCostSummary(points)}
+          ${this._renderCostChart(points)}
+          <div class="plan-legend">
+            <div class="plan-legend-item">
+              <span class="plan-legend-dot" style="background: var(--vcc-error)"></span>
+              <span>Cost</span>
+            </div>
+            <div class="plan-legend-item">
+              <span class="plan-legend-dot" style="background: var(--vcc-success)"></span>
+              <span>Revenue</span>
+            </div>
+          </div>
+        ` : nothing}
+      </div>`;
+  }
+
   // ── Plan view ────────────────────────────────────────────
 
   _renderPlanView() {
@@ -994,13 +1361,16 @@ class VictronChargeControllerCard extends LitElement {
     const actMeta = ACTION_META[action] || ACTION_META.idle;
     const feedInStatus = this._val('sensor', 'grid_feed_in_status') || 'default';
     const feedInMeta = FEED_IN_META[feedInStatus] || FEED_IN_META.default;
+    const view = this.config.view || 'settings';
+    const viewTitle = view === 'plan' ? 'Plan' : (view === 'costs' ? 'Costs' : 'Settings');
+    const viewIcon = view === 'costs' ? 'mdi:chart-bar' : 'mdi:battery-charging-wireless';
 
     return html`
       <ha-card>
         <div class="card-header">
           <div class="header-title">
-            <ha-icon icon="mdi:battery-charging-wireless"></ha-icon>
-            <span>${this.config.view === 'plan' ? 'Plan' : 'Settings'}</span>
+            <ha-icon .icon=${viewIcon}></ha-icon>
+            <span>${viewTitle}</span>
           </div>
           <div class="header-badges">
             <div class="header-badge" data-feed-in=${feedInStatus}>
@@ -1014,7 +1384,9 @@ class VictronChargeControllerCard extends LitElement {
           </div>
         </div>
         <div class="card-content">
-          ${this.config.view === 'plan' ? this._renderPlanView() : this._renderControlsView()}
+          ${view === 'plan'
+            ? this._renderPlanView()
+            : (view === 'costs' ? this._renderCostsView() : this._renderControlsView())}
         </div>
       </ha-card>`;
   }
@@ -1420,6 +1792,128 @@ class VictronChargeControllerCard extends LitElement {
         border-color: var(--vcc-accent, #03a9f4);
         color: var(--vcc-accent, #03a9f4);
       }
+
+      /* ── Cost chart ────────────────────────────── */
+      .costs-container {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .costs-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      .cost-range-group {
+        display: flex;
+        gap: 4px;
+        flex-wrap: wrap;
+      }
+      .cost-range-btn {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        padding: 6px 10px;
+        border: 1px solid var(--vcc-border);
+        border-radius: 8px;
+        background: none;
+        color: var(--vcc-text2);
+        cursor: pointer;
+        font-size: 0.78em;
+        font-family: inherit;
+        transition: all 0.15s ease;
+      }
+      .cost-range-btn ha-icon {
+        --mdc-icon-size: 16px;
+      }
+      .cost-range-btn:hover {
+        border-color: var(--vcc-accent);
+        color: var(--vcc-accent);
+      }
+      .cost-range-btn.active {
+        background: rgba(33,150,243,0.12);
+        border-color: var(--vcc-info);
+        color: var(--vcc-info);
+        font-weight: 600;
+      }
+      .cost-summary {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+      }
+      .cost-summary-item {
+        min-width: 0;
+        padding: 10px 12px;
+        border: 1px solid var(--vcc-border);
+        border-radius: 8px;
+      }
+      .cost-summary-item span {
+        display: block;
+        color: var(--vcc-text2);
+        font-size: 0.76em;
+        margin-bottom: 3px;
+      }
+      .cost-summary-item strong {
+        display: block;
+        color: var(--vcc-text);
+        font-size: 0.96em;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .cost-summary-item.cost strong,
+      .cost-summary-item.negative strong {
+        color: var(--vcc-error);
+      }
+      .cost-summary-item.revenue strong,
+      .cost-summary-item.positive strong {
+        color: var(--vcc-success);
+      }
+      .cost-chart {
+        width: 100%;
+        height: auto;
+        font-family: inherit;
+      }
+      .cost-axis-label {
+        font-size: 12px;
+        fill: var(--vcc-text2, #757575);
+      }
+      .cost-axis-unit {
+        font-size: 13px;
+        fill: var(--vcc-text2, #757575);
+      }
+      .cost-loading {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 16px;
+        color: var(--vcc-text2);
+        font-size: 0.9em;
+      }
+      .cost-loading ha-icon {
+        --mdc-icon-size: 18px;
+      }
+      @media (max-width: 420px) {
+        .costs-toolbar {
+          align-items: stretch;
+          flex-direction: column;
+        }
+        .cost-range-group {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+        }
+        .cost-range-btn {
+          justify-content: center;
+          padding: 7px 6px;
+        }
+        .cost-range-btn span {
+          display: none;
+        }
+        .cost-summary {
+          grid-template-columns: 1fr;
+        }
+      }
     `;
   }
 }
@@ -1460,6 +1954,7 @@ class VictronChargeControllerCardEditor extends LitElement {
           >
             <option value="settings" ?selected=${(this.config.view || 'settings') === 'settings'}>Settings</option>
             <option value="plan" ?selected=${this.config.view === 'plan'}>Plan</option>
+            <option value="costs" ?selected=${this.config.view === 'costs'}>Costs</option>
           </select>
           <small>Choose which view this card displays</small>
         </div>
