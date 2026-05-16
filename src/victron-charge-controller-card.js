@@ -700,7 +700,7 @@ class VictronChargeControllerCard extends LitElement {
     const chartH = 260;
     const padL = 50;
     const padR = 40;
-    const padT = 25;
+    const padT = 38;
     const padB = 30;
     const plotW = chartW - padL - padR;
     const plotH = chartH - padT - padB;
@@ -840,7 +840,7 @@ class VictronChargeControllerCard extends LitElement {
         })() : nothing}
 
         <!-- Y-axis unit -->
-        <text x="${padL - 6}" y="${padT - 12}" text-anchor="end"
+        <text x="${padL + 12}" y="${padT - 14}" text-anchor="end"
           class="plan-axis-unit">ct/kWh</text>
 
         <!-- X-axis labels (every 2 hours) -->
@@ -1079,7 +1079,7 @@ class VictronChargeControllerCard extends LitElement {
 
   _formatCostBucketLabel(startMs, period) {
     const d = new Date(startMs);
-    if (period === 'hour') return `${String(d.getHours()).padStart(2, '0')}:00`;
+    if (period === 'hour') return String(d.getHours()).padStart(2, '0');
     if (period === 'month') return d.toLocaleDateString(undefined, { month: 'short' });
     return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   }
@@ -1102,7 +1102,7 @@ class VictronChargeControllerCard extends LitElement {
     const chartH = 280;
     const padL = 54;
     const padR = 24;
-    const padT = 24;
+    const padT = 36;
     const padB = 42;
     const plotW = chartW - padL - padR;
     const plotH = chartH - padT - padB;
@@ -1153,7 +1153,7 @@ class VictronChargeControllerCard extends LitElement {
           `;
         })}
 
-        <text x="${padL - 7}" y="${padT - 10}" text-anchor="end"
+        <text x="${padL + 0}" y="${padT - 14}" text-anchor="end"
           class="cost-axis-unit">EUR</text>
       </svg>
     `;
@@ -1792,11 +1792,11 @@ class VictronChargeControllerCard extends LitElement {
         font-family: inherit;
       }
       .plan-axis-label {
-        font-size: 14px;
+        font-size: 16px;
         fill: var(--vcc-text2, #757575);
       }
       .plan-axis-unit {
-        font-size: 14px;
+        font-size: 15px;
         fill: var(--vcc-text2, #757575);
       }
       .plan-threshold-label {
@@ -2069,11 +2069,11 @@ class VictronChargeControllerCard extends LitElement {
         font-family: inherit;
       }
       .cost-axis-label {
-        font-size: 12px;
+        font-size: 16px;
         fill: var(--vcc-text2, #757575);
       }
       .cost-axis-unit {
-        font-size: 13px;
+        font-size: 16px;
         fill: var(--vcc-text2, #757575);
       }
       .cost-loading {
