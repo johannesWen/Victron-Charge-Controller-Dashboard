@@ -65,6 +65,14 @@ input_number:
     unit_of_measurement: "kWh"
     icon: mdi:transmission-tower-export
 
+  energy_history_days:
+    name: "Energy History Days"
+    min: 0
+    max: 365
+    step: 1
+    initial: 30
+    icon: mdi:history
+
 # ---------------------------------------------------------------
 # Template entities
 # ---------------------------------------------------------------
@@ -116,7 +124,23 @@ template:
         unit_of_measurement: "kWh"
         device_class: energy
         state_class: total_increasing
-        state: "{{ states('input_number.grid_consumption_kwh_value') | float(1200) }}"
+        # Dynamic cumulative meter used by the integration to calculate
+        # Grid Energy Cost from kWh deltas and the current EPEX spot price.
+        # input_number.energy_history_days initializes the meter as if it
+        # already contains that many complete previous days of history.
+        state: >-
+          {% set hourly = [0.32,0.28,0.25,0.22,0.25,0.42,0.68,0.91,0.86,0.72,0.58,0.52,0.49,0.51,0.57,0.76,1.02,1.34,1.52,1.21,0.93,0.67,0.49,0.38] %}
+          {% set h = now().hour %}
+          {% set history_days = states('input_number.energy_history_days') | int(30) %}
+          {% set elapsed_hour = (now().minute * 60 + now().second) / 3600 %}
+          {% set ns = namespace(today=0, daily=0) %}
+          {% for value in hourly %}
+            {% set ns.daily = ns.daily + value %}
+          {% endfor %}
+          {% for i in range(h) %}
+            {% set ns.today = ns.today + hourly[i] %}
+          {% endfor %}
+          {{ (states('input_number.grid_consumption_kwh_value') | float(1200) + (history_days * ns.daily) + ns.today + (hourly[h] * elapsed_hour)) | round(3) }}
         icon: mdi:transmission-tower-import
 
       - name: "Grid Feed-in Energy"
@@ -124,14 +148,30 @@ template:
         unit_of_measurement: "kWh"
         device_class: energy
         state_class: total_increasing
-        state: "{{ states('input_number.grid_feed_in_kwh_value') | float(300) }}"
+        # Dynamic cumulative meter used by the integration to calculate
+        # Grid Energy Revenue from kWh deltas and the current EPEX spot price.
+        # input_number.energy_history_days initializes the meter as if it
+        # already contains that many complete previous days of history.
+        state: >-
+          {% set hourly = [0.00,0.00,0.00,0.00,0.00,0.02,0.14,0.38,0.72,1.05,1.38,1.62,1.78,1.71,1.49,1.12,0.74,0.36,0.12,0.02,0.00,0.00,0.00,0.00] %}
+          {% set h = now().hour %}
+          {% set history_days = states('input_number.energy_history_days') | int(30) %}
+          {% set elapsed_hour = (now().minute * 60 + now().second) / 3600 %}
+          {% set ns = namespace(today=0, daily=0) %}
+          {% for value in hourly %}
+            {% set ns.daily = ns.daily + value %}
+          {% endfor %}
+          {% for i in range(h) %}
+            {% set ns.today = ns.today + hourly[i] %}
+          {% endfor %}
+          {{ (states('input_number.grid_feed_in_kwh_value') | float(300) + (history_days * ns.daily) + ns.today + (hourly[h] * elapsed_hour)) | round(3) }}
         icon: mdi:transmission-tower-export
 
       # EPEX Spot price sensor with 24h of simulated prices.
       # Prices are realistic: cheap at night (0.01-0.05 €), moderate midday
       # (0.08-0.15 €), expensive in the evening peak (0.18-0.32 €).
-      # The data attribute uses today's date so the schedule calculator
-      # always sees current-day hours.
+      # The data attribute includes configurable historical days, today, and
+      # tomorrow so dummy price data lines up with the synthetic energy meters.
       - name: "EPEX Spot Price"
         unique_id: dummy_epex_spot
         unit_of_measurement: "€/kWh"
@@ -146,7 +186,17 @@ template:
             {% set prices_tomorrow = [-0.038,-0.101,0.025,0.018,0.029,0.063,0.095,0.134,0.168,0.155,0.129,0.112,0.098,0.093,0.125,0.201,0.245,0.298,0.342,0.271,0.208,0.161,0.105,0.061] %}
             {% set today = now().replace(hour=0, minute=0, second=0, microsecond=0) %}
             {% set tomorrow = today + timedelta(days=1) %}
+            {% set history_days = states('input_number.energy_history_days') | int(30) %}
             {% set ns = namespace(entries=[]) %}
+            {% for d in range(-history_days, 0) %}
+              {% set day = today + timedelta(days=d) %}
+              {% set day_factor = 1 + ((d | abs) % 5 - 2) * 0.04 %}
+              {% for h in range(24) %}
+                {% set start = day + timedelta(hours=h) %}
+                {% set end = day + timedelta(hours=h+1) %}
+                {% set ns.entries = ns.entries + [{"start_time": start.isoformat(), "end_time": end.isoformat(), "price_per_kwh": (prices_today[h] * day_factor) | round(3)}] %}
+              {% endfor %}
+            {% endfor %}
             {% for h in range(24) %}
               {% set start = today + timedelta(hours=h) %}
               {% set end = today + timedelta(hours=h+1) %}
