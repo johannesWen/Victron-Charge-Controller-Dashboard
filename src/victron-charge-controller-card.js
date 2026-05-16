@@ -1363,7 +1363,9 @@ class VictronChargeControllerCard extends LitElement {
     const feedInMeta = FEED_IN_META[feedInStatus] || FEED_IN_META.default;
     const view = this.config.view || 'settings';
     const viewTitle = view === 'plan' ? 'Plan' : (view === 'costs' ? 'Costs' : 'Settings');
-    const viewIcon = view === 'costs' ? 'mdi:chart-bar' : 'mdi:battery-charging-wireless';
+    const viewIcon = view === 'plan'
+      ? 'mdi:calendar'
+      : (view === 'costs' ? 'mdi:chart-bar' : 'mdi:battery-charging-wireless');
 
     return html`
       <ha-card>
@@ -1430,16 +1432,16 @@ class VictronChargeControllerCard extends LitElement {
         display: flex; align-items: center; gap: 6px;
       }
       .header-badge {
-        display: flex; align-items: center; gap: 4px;
-        padding: 4px 12px; border-radius: 16px;
-        font-size: 0.8em; font-weight: 600;
+        display: flex; align-items: center; gap: 3px;
+        padding: 2px 8px; border-radius: 12px;
+        font-size: 0.72em; font-weight: 600;
         background: rgba(158,158,158,0.12); color: var(--vcc-disabled);
       }
       .header-badge[data-action="charge"]    { background: rgba(76,175,80,0.12);  color: var(--vcc-success); }
       .header-badge[data-action="discharge"] { background: rgba(255,152,0,0.12);  color: var(--vcc-warning); }
       .header-badge[data-feed-in="default"]  { background: rgba(76,175,80,0.12);  color: var(--vcc-success); }
       .header-badge[data-feed-in="reduced"]  { background: rgba(255,152,0,0.12);  color: var(--vcc-warning); }
-      .header-badge ha-icon { --mdc-icon-size: 16px; }
+      .header-badge ha-icon { --mdc-icon-size: 13px; }
 
       /* ── Content ───────────────────────────────── */
       .card-content { padding: 12px 16px 16px; }
