@@ -925,7 +925,8 @@ class VictronChargeControllerCard extends LitElement {
       this._eid('sensor', 'grid_energy_revenue'),
     ];
     const window = this._getCostRangeWindow(range);
-    return `${range}|${window.period}|${window.offset}|${window.start.getTime()}|${window.end.getTime()}|${this._costRefreshBucket(range)}|${ids.join(',')}`;
+    const endKey = window.offset === 0 ? 'current' : window.end.getTime();
+    return `${range}|${window.period}|${window.offset}|${window.start.getTime()}|${endKey}|${this._costRefreshBucket(range)}|${ids.join(',')}`;
   }
 
   _setCostRange(range) {
