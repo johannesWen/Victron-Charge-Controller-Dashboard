@@ -158,6 +158,65 @@ class VictronChargeControllerCard extends LitElement {
       .filter(n => !isNaN(n) && n >= 0 && n <= 23);
   }
 
+  _parseScheduleSlots(value) {
+    if (value === undefined || value === null || value === 'unknown' || value === 'unavailable') return null;
+    const trimmed = String(value).trim();
+    if (!trimmed) return new Set();
+
+    const slots = new Set();
+    for (const group of trimmed.split('|')) {
+      const [date, hoursText, ...rest] = group.split(':');
+      if (!date || hoursText === undefined || rest.length > 0) return null;
+      const dateText = date.trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateText)) return null;
+      for (const rawHour of hoursText.split(',')) {
+        const hourText = rawHour.trim();
+        if (!hourText) continue;
+        if (!/^\d+$/.test(hourText)) return null;
+        const hour = Number.parseInt(hourText, 10);
+        if (Number.isNaN(hour) || hour < 0 || hour > 23) return null;
+        slots.add(`${dateText}:${hour}`);
+      }
+    }
+    return slots;
+  }
+
+  _normalizePlanAction(action) {
+    if (action === 'charge' || action === 'discharge' || action === 'blocked') return action;
+    return 'idle';
+  }
+
+  _enrichPlanDisplayState(plan) {
+    const chargeSlots = this._parseScheduleSlots(this._val('sensor', 'charge_hours'));
+    const dischargeSlots = this._parseScheduleSlots(this._val('sensor', 'discharge_hours'));
+    const hasScheduleSensors = chargeSlots !== null && dischargeSlots !== null;
+    const blockedChargingHours = this._parseHours(this._val('text', 'blocked_charging_hours'));
+    const blockedDischargingHours = this._parseHours(this._val('text', 'blocked_discharging_hours'));
+
+    return plan.map(entry => {
+      const hour = entry.hour;
+      const slotKey = entry.date !== undefined && hour !== undefined ? `${entry.date}:${hour}` : null;
+      const blockedCharging = blockedChargingHours.includes(hour) || entry.action === 'blocked_charging' || entry.action === 'blocked';
+      const blockedDischarging = blockedDischargingHours.includes(hour) || entry.action === 'blocked_discharging' || entry.action === 'blocked';
+
+      let displayAction = this._normalizePlanAction(entry.action);
+      if (blockedCharging && blockedDischarging) {
+        displayAction = 'blocked';
+      } else if (hasScheduleSensors && slotKey) {
+        if (chargeSlots.has(slotKey) && !blockedCharging) displayAction = 'charge';
+        else if (dischargeSlots.has(slotKey) && !blockedDischarging) displayAction = 'discharge';
+        else displayAction = 'idle';
+      }
+
+      return {
+        ...entry,
+        displayAction,
+        blockedCharging,
+        blockedDischarging,
+      };
+    });
+  }
+
   _toggleBlockedHour(type, hour) {
     const key = type === 'charging'
       ? 'blocked_charging_hours'
@@ -652,20 +711,16 @@ class VictronChargeControllerCard extends LitElement {
       switch (action) {
         case 'charge':              return 'var(--vcc-success, #4caf50)';
         case 'discharge':           return 'var(--vcc-warning, #ff9800)';
-        case 'blocked_charging':    return 'var(--vcc-blocked-charging, #2e7d32)';
-        case 'blocked_discharging': return 'var(--vcc-blocked-discharging, #ef6c00)';
         case 'blocked':             return 'var(--vcc-blocked-both, #f44336)';
         default:                    return 'var(--vcc-disabled, #bdbdbd)';
       }
     };
 
-    const actionFill = (action) => {
-      switch (action) {
-        case 'blocked_charging':    return 'url(#plan-hatch-blocked-charging)';
-        case 'blocked_discharging': return 'url(#plan-hatch-blocked-discharging)';
-        case 'blocked':             return 'url(#plan-hatch-blocked-both)';
-        default:                    return actionColor(action);
-      }
+    const blockedOverlayFill = (entry) => {
+      if (entry.blockedCharging && entry.blockedDischarging) return 'url(#plan-hatch-blocked-both)';
+      if (entry.blockedCharging) return 'url(#plan-hatch-blocked-charging)';
+      if (entry.blockedDischarging) return 'url(#plan-hatch-blocked-discharging)';
+      return null;
     };
 
     const yPos = (price) => padT + plotH - ((price - scaleMin) / scaleRange) * plotH;
@@ -681,19 +736,16 @@ class VictronChargeControllerCard extends LitElement {
       <svg class="plan-chart" viewBox="0 0 ${chartW} ${chartH}" preserveAspectRatio="xMidYMid meet">
         <defs>
           <pattern id="plan-hatch-blocked-charging" patternUnits="userSpaceOnUse" width="6" height="6">
-            <rect width="6" height="6" fill="${actionColor('blocked_charging')}" />
             <path d="M-1,7 L7,-1 M4,8 L8,4"
-              stroke="var(--vcc-bg, #fff)" stroke-width="1.4" opacity="0.7" />
+              stroke="var(--vcc-blocked-charging, #2e7d32)" stroke-width="1.4" opacity="0.85" />
           </pattern>
           <pattern id="plan-hatch-blocked-discharging" patternUnits="userSpaceOnUse" width="6" height="6">
-            <rect width="6" height="6" fill="${actionColor('blocked_discharging')}" />
             <path d="M-1,7 L7,-1 M4,8 L8,4"
-              stroke="var(--vcc-bg, #fff)" stroke-width="1.4" opacity="0.7" />
+              stroke="var(--vcc-blocked-discharging, #ef6c00)" stroke-width="1.4" opacity="0.85" />
           </pattern>
           <pattern id="plan-hatch-blocked-both" patternUnits="userSpaceOnUse" width="6" height="6">
-            <rect width="6" height="6" fill="${actionColor('blocked')}" />
             <path d="M-1,7 L7,-1 M4,8 L8,4"
-              stroke="var(--vcc-bg, #fff)" stroke-width="1.4" opacity="0.7" />
+              stroke="var(--vcc-bg, #fff)" stroke-width="1.4" opacity="0.85" />
           </pattern>
         </defs>
 
@@ -723,13 +775,23 @@ class VictronChargeControllerCard extends LitElement {
           const barH = Math.abs(barTop - barBase) || 1;
           const isPast = showCurrentHour && h < currentHour;
           const isCurrent = showCurrentHour && h === currentHour;
+          const displayAction = entry.displayAction || entry.action;
+          const overlayFill = isPast ? null : blockedOverlayFill(entry);
           return svg`
             <rect
               x="${x}" y="${barY}" width="${w}" height="${barH}"
-              fill="${isPast ? actionColor('idle') : actionFill(entry.action)}"
+              fill="${isPast ? actionColor('idle') : actionColor(displayAction)}"
               opacity="${isPast ? 0.35 : (isCurrent ? 1 : 0.7)}"
               rx="1.5"
             />
+            ${overlayFill ? svg`
+              <rect
+                x="${x}" y="${barY}" width="${w}" height="${barH}"
+                fill="${overlayFill}"
+                opacity="${isCurrent ? 1 : 0.9}"
+                rx="1.5"
+              />
+            ` : nothing}
             ${isCurrent ? svg`
               <rect x="${x - 1}" y="${padT}" width="${w + 2}" height="${plotH}"
                 fill="none" stroke="var(--vcc-accent, #03a9f4)"
@@ -1198,6 +1260,9 @@ class VictronChargeControllerCard extends LitElement {
       }
     }
 
+    todayPlan = this._enrichPlanDisplayState(todayPlan);
+    tomorrowPlan = this._enrichPlanDisplayState(tomorrowPlan);
+
     const chargeThreshold = parseFloat(this._val('number', 'charge_price_threshold'));
     const dischargeThreshold = parseFloat(this._val('number', 'discharge_price_threshold'));
     // Use pending overrides until HA entity catches up
@@ -1305,15 +1370,15 @@ class VictronChargeControllerCard extends LitElement {
             <span>Idle</span>
           </div>
           <div class="plan-legend-item">
-            <span class="plan-legend-dot plan-legend-dot-hatched" style="--legend-color: var(--vcc-blocked-charging)"></span>
-            <span>Blocked Charge</span>
+            <span class="plan-legend-dot plan-legend-dot-hatched" style="--legend-base: var(--vcc-success); --legend-hatch: var(--vcc-blocked-discharging)"></span>
+            <span>Charge + Blocked Discharge</span>
           </div>
           <div class="plan-legend-item">
-            <span class="plan-legend-dot plan-legend-dot-hatched" style="--legend-color: var(--vcc-blocked-discharging)"></span>
-            <span>Blocked Discharge</span>
+            <span class="plan-legend-dot plan-legend-dot-hatched" style="--legend-base: var(--vcc-warning); --legend-hatch: var(--vcc-blocked-charging)"></span>
+            <span>Discharge + Blocked Charge</span>
           </div>
           <div class="plan-legend-item">
-            <span class="plan-legend-dot plan-legend-dot-hatched" style="--legend-color: var(--vcc-blocked-both)"></span>
+            <span class="plan-legend-dot plan-legend-dot-hatched" style="--legend-base: var(--vcc-blocked-both); --legend-hatch: var(--vcc-bg)"></span>
             <span>Blocked Both</span>
           </div>
           <div class="plan-legend-item">
@@ -1721,9 +1786,10 @@ class VictronChargeControllerCard extends LitElement {
           repeating-linear-gradient(
             135deg,
             transparent 0 3px,
-            var(--vcc-bg, #fff) 3px 4.5px
+            var(--legend-hatch, var(--vcc-bg, #fff)) 3px 4.5px,
+            transparent 4.5px 6px
           ),
-          var(--legend-color, var(--vcc-error, #f44336));
+          var(--legend-base, var(--vcc-error, #f44336));
       }
       .plan-legend-dot-current {
         background: none;
