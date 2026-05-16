@@ -906,6 +906,7 @@ class VictronChargeControllerCard extends LitElement {
       end: offset === 0 ? now : periodEnd,
       queryStart: this._addPeriod(start, COST_RANGES[range].period, -1),
       period: COST_RANGES[range].period,
+      range,
       offset,
     };
   }
@@ -1070,7 +1071,7 @@ class VictronChargeControllerCard extends LitElement {
       const revenue = revenueMap.get(startMs) ?? 0;
       return {
         startMs,
-        label: this._formatCostBucketLabel(startMs, window.period),
+        label: this._formatCostBucketLabel(startMs, window.period, window.range),
         cost,
         revenue,
         net: revenue - cost,
@@ -1078,10 +1079,11 @@ class VictronChargeControllerCard extends LitElement {
     });
   }
 
-  _formatCostBucketLabel(startMs, period) {
+  _formatCostBucketLabel(startMs, period, range) {
     const d = new Date(startMs);
     if (period === 'hour') return String(d.getHours()).padStart(2, '0');
     if (period === 'month') return d.toLocaleDateString(undefined, { month: 'short' });
+    if (range === 'month') return String(d.getDate());
     return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   }
 
@@ -1120,7 +1122,8 @@ class VictronChargeControllerCard extends LitElement {
       return { val, y: yPos(val) };
     });
 
-    const labelEvery = Math.max(1, Math.ceil(points.length / 8));
+    const range = COST_RANGES[this._costRange] ? this._costRange : 'day';
+    const labelEvery = range === 'day' ? 2 : Math.max(1, Math.ceil(points.length / 8));
 
     return svg`
       <svg class="cost-chart" viewBox="0 0 ${chartW} ${chartH}" preserveAspectRatio="xMidYMid meet">
@@ -1147,7 +1150,8 @@ class VictronChargeControllerCard extends LitElement {
               fill="var(--vcc-success, #4caf50)" opacity="0.78" rx="1.5">
               <title>${point.label} revenue: ${this._formatMoney(point.revenue)}</title>
             </rect>
-            ${(i % labelEvery === 0 || i === points.length - 1) ? svg`
+            ${((range === 'day' && new Date(point.startMs).getHours() % labelEvery === 0)
+              || (range !== 'day' && (i % labelEvery === 0 || i === points.length - 1))) ? svg`
               <text x="${xCenter}" y="${chartH - 10}" text-anchor="middle"
                 class="cost-axis-label">${point.label}</text>
             ` : nothing}
