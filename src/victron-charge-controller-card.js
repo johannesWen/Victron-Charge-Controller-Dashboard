@@ -735,17 +735,17 @@ class VictronChargeControllerCard extends LitElement {
     return svg`
       <svg class="plan-chart" viewBox="0 0 ${chartW} ${chartH}" preserveAspectRatio="xMidYMid meet">
         <defs>
-          <pattern id="plan-hatch-blocked-charging" patternUnits="userSpaceOnUse" width="6" height="6">
-            <path d="M-1,7 L7,-1 M4,8 L8,4"
-              stroke="var(--vcc-blocked-charging, #2e7d32)" stroke-width="1.4" opacity="0.85" />
+          <pattern id="plan-hatch-blocked-charging" patternUnits="userSpaceOnUse" width="10" height="10">
+            <path d="M-2,12 L12,-2"
+              stroke="var(--vcc-blocked-charging, #2e7d32)" stroke-width="1.8" opacity="0.95" />
           </pattern>
-          <pattern id="plan-hatch-blocked-discharging" patternUnits="userSpaceOnUse" width="6" height="6">
-            <path d="M-1,7 L7,-1 M4,8 L8,4"
-              stroke="var(--vcc-blocked-discharging, #ef6c00)" stroke-width="1.4" opacity="0.85" />
+          <pattern id="plan-hatch-blocked-discharging" patternUnits="userSpaceOnUse" width="10" height="10">
+            <path d="M-2,12 L12,-2"
+              stroke="var(--vcc-blocked-discharging, #ef6c00)" stroke-width="1.8" opacity="0.95" />
           </pattern>
-          <pattern id="plan-hatch-blocked-both" patternUnits="userSpaceOnUse" width="6" height="6">
-            <path d="M-1,7 L7,-1 M4,8 L8,4"
-              stroke="var(--vcc-bg, #fff)" stroke-width="1.4" opacity="0.85" />
+          <pattern id="plan-hatch-blocked-both" patternUnits="userSpaceOnUse" width="10" height="10">
+            <path d="M-2,12 L12,-2"
+              stroke="var(--vcc-bg, #fff)" stroke-width="1.8" opacity="0.95" />
           </pattern>
         </defs>
 
@@ -1785,9 +1785,9 @@ class VictronChargeControllerCard extends LitElement {
         background:
           repeating-linear-gradient(
             135deg,
-            transparent 0 3px,
-            var(--legend-hatch, var(--vcc-bg, #fff)) 3px 4.5px,
-            transparent 4.5px 6px
+            transparent 0 5px,
+            var(--legend-hatch, var(--vcc-bg, #fff)) 5px 7px,
+            transparent 7px 10px
           ),
           var(--legend-base, var(--vcc-error, #f44336));
       }
