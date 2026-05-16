@@ -65,6 +65,7 @@ class VictronChargeControllerCard extends LitElement {
     // Pending threshold overrides (until HA entity catches up)
     this._pendingThresholds = {};
     this._costRange = 'day';
+    this._costRangeOffsets = { day: 0, week: 0, month: 0, year: 0 };
     this._costStatsState = { status: 'idle', key: null, points: [], error: null };
   }
 
@@ -873,30 +874,46 @@ class VictronChargeControllerCard extends LitElement {
     return d;
   }
 
-  _getCostRangeWindow(range) {
-    const now = new Date();
-    let start;
+  _addCostRangePeriods(date, range, amount) {
+    const d = new Date(date);
+    if (range === 'week') d.setDate(d.getDate() + amount * 7);
+    else if (range === 'month') d.setMonth(d.getMonth() + amount);
+    else if (range === 'year') d.setFullYear(d.getFullYear() + amount);
+    else d.setDate(d.getDate() + amount);
+    return d;
+  }
+
+  _getCurrentCostPeriodStart(range, now = new Date()) {
     if (range === 'week') {
-      start = this._startOfDay(now);
+      const start = this._startOfDay(now);
       const mondayOffset = (start.getDay() + 6) % 7;
       start.setDate(start.getDate() - mondayOffset);
-    } else if (range === 'month') {
-      start = new Date(now.getFullYear(), now.getMonth(), 1);
-    } else if (range === 'year') {
-      start = new Date(now.getFullYear(), 0, 1);
-    } else {
-      start = this._startOfDay(now);
+      return start;
     }
+    if (range === 'month') return new Date(now.getFullYear(), now.getMonth(), 1);
+    if (range === 'year') return new Date(now.getFullYear(), 0, 1);
+    return this._startOfDay(now);
+  }
+
+  _getCostRangeWindow(range) {
+    const now = new Date();
+    const offset = this._costRangeOffsets?.[range] ?? 0;
+    const currentStart = this._getCurrentCostPeriodStart(range, now);
+    const start = this._addCostRangePeriods(currentStart, range, offset);
+    const periodEnd = this._addCostRangePeriods(start, range, 1);
     return {
       start,
-      end: now,
+      end: offset === 0 ? now : periodEnd,
       queryStart: this._addPeriod(start, COST_RANGES[range].period, -1),
       period: COST_RANGES[range].period,
+      offset,
     };
   }
 
   _costRefreshBucket(range) {
     const now = new Date();
+    const offset = this._costRangeOffsets?.[range] ?? 0;
+    if (offset < 0) return 'archive';
     if (range === 'year') return `${now.getFullYear()}-${now.getMonth()}`;
     if (range === 'month' || range === 'week') return now.toISOString().slice(0, 10);
     return `${now.toISOString().slice(0, 13)}:${Math.floor(now.getMinutes() / 5)}`;
@@ -908,14 +925,50 @@ class VictronChargeControllerCard extends LitElement {
       this._eid('sensor', 'grid_energy_revenue'),
     ];
     const window = this._getCostRangeWindow(range);
-    return `${range}|${window.period}|${window.start.getTime()}|${this._costRefreshBucket(range)}|${ids.join(',')}`;
+    return `${range}|${window.period}|${window.offset}|${window.start.getTime()}|${window.end.getTime()}|${this._costRefreshBucket(range)}|${ids.join(',')}`;
   }
 
   _setCostRange(range) {
-    if (!COST_RANGES[range] || this._costRange === range) return;
+    if (!COST_RANGES[range]) return;
+    if (this._costRange === range) {
+      const currentOffset = this._costRangeOffsets?.[range] ?? 0;
+      if (currentOffset === 0) return;
+      this._costRangeOffsets = { ...this._costRangeOffsets, [range]: 0 };
+      this._costStatsState = { status: 'idle', key: null, points: [], error: null };
+      this.requestUpdate();
+      return;
+    }
     this._costRange = range;
+    this._costRangeOffsets = { ...this._costRangeOffsets, [range]: 0 };
     this._costStatsState = { status: 'idle', key: null, points: [], error: null };
     this.requestUpdate();
+  }
+
+  _shiftCostPeriod(amount) {
+    const range = COST_RANGES[this._costRange] ? this._costRange : 'day';
+    const currentOffset = this._costRangeOffsets?.[range] ?? 0;
+    const nextOffset = Math.min(0, currentOffset + amount);
+    if (nextOffset === currentOffset) return;
+    this._costRangeOffsets = { ...this._costRangeOffsets, [range]: nextOffset };
+    this._costStatsState = { status: 'idle', key: null, points: [], error: null };
+    this.requestUpdate();
+  }
+
+  _formatCostPeriodLabel(range) {
+    const window = this._getCostRangeWindow(range);
+    const date = window.start;
+    if (range === 'year') return date.toLocaleDateString(undefined, { year: 'numeric' });
+    if (range === 'month') return date.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+    if (range === 'week') {
+      const end = this._addPeriod(window.start, 'day', 6);
+      return `${this._formatCostDayMonth(window.start)} - ${this._formatCostDayMonth(end)}, ${end.getFullYear()}`;
+    }
+    return `${date.toLocaleDateString(undefined, { weekday: 'short' })}, ${this._formatCostDayMonth(date)} ${date.getFullYear()}`;
+  }
+
+  _formatCostDayMonth(date) {
+    const month = date.toLocaleDateString(undefined, { month: 'long' });
+    return `${date.getDate()}. ${month}`;
   }
 
   _refreshCostStats() {
@@ -952,8 +1005,7 @@ class VictronChargeControllerCard extends LitElement {
         types: ['sum'],
       }))
       .then((result) => {
-        const currentKey = this._costStatsKey(range);
-        if (this._costStatsState.key !== key && currentKey !== key) return;
+        if (this._costRange !== range || this._costStatsState.key !== key) return;
         const points = this._buildCostPoints(result || {}, costId, revenueId, window);
         this._costStatsState = {
           status: points.length > 0 ? 'ready' : 'empty',
@@ -1002,7 +1054,7 @@ class VictronChargeControllerCard extends LitElement {
         delta = Math.max(0, sum - previousSum);
       }
       if (sum !== null) previousSum = sum;
-      if (startMs < window.start.getTime() || startMs > window.end.getTime()) continue;
+      if (startMs < window.start.getTime() || startMs >= window.end.getTime()) continue;
       if (delta !== null) map.set(startMs, Math.max(0, delta));
     }
     return map;
@@ -1140,11 +1192,13 @@ class VictronChargeControllerCard extends LitElement {
         </div>`;
     }
 
+    const range = COST_RANGES[this._costRange] ? this._costRange : 'day';
     this._ensureCostStatsLoaded();
 
-    const range = COST_RANGES[this._costRange] ? this._costRange : 'day';
     const state = this._costStatsState;
     const points = state.points || [];
+    const costOffset = this._costRangeOffsets?.[range] ?? 0;
+    const periodLabel = this._formatCostPeriodLabel(range);
 
     return html`
       <div class="costs-container">
@@ -1161,12 +1215,29 @@ class VictronChargeControllerCard extends LitElement {
               </button>
             `)}
           </div>
-          <button class="action-btn plan-recalc-btn"
-            @click=${() => this._refreshCostStats()}
-            title="Refresh statistics">
-            <ha-icon icon="mdi:refresh"></ha-icon>
-            Refresh
-          </button>
+          <div class="cost-period-nav">
+            <button
+              class="cost-period-btn"
+              @click=${() => this._shiftCostPeriod(-1)}
+              title="Previous ${COST_RANGES[range].label.toLowerCase()}"
+            >
+              <ha-icon icon="mdi:chevron-left"></ha-icon>
+            </button>
+            <div class="cost-period-label">${periodLabel}</div>
+            <button
+              class="cost-period-btn"
+              ?disabled=${costOffset === 0}
+              @click=${() => this._shiftCostPeriod(1)}
+              title="Next ${COST_RANGES[range].label.toLowerCase()}"
+            >
+              <ha-icon icon="mdi:chevron-right"></ha-icon>
+            </button>
+            <button class="cost-refresh-btn"
+              @click=${() => this._refreshCostStats()}
+              title="Refresh statistics">
+              <ha-icon icon="mdi:refresh"></ha-icon>
+            </button>
+          </div>
         </div>
 
         ${state.status === 'loading' ? html`
@@ -1869,20 +1940,22 @@ class VictronChargeControllerCard extends LitElement {
       }
       .costs-toolbar {
         display: flex;
-        align-items: center;
-        justify-content: space-between;
+        flex-direction: column;
+        align-items: stretch;
         gap: 8px;
       }
       .cost-range-group {
-        display: flex;
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
         gap: 4px;
-        flex-wrap: wrap;
       }
       .cost-range-btn {
         display: flex;
         align-items: center;
+        justify-content: center;
         gap: 4px;
-        padding: 6px 10px;
+        min-width: 0;
+        padding: 7px 6px;
         border: 1px solid var(--vcc-border);
         border-radius: 8px;
         background: none;
@@ -1904,6 +1977,58 @@ class VictronChargeControllerCard extends LitElement {
         border-color: var(--vcc-info);
         color: var(--vcc-info);
         font-weight: 600;
+      }
+      .cost-range-btn span {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .cost-period-nav {
+        display: grid;
+        grid-template-columns: 34px minmax(0, 1fr) 34px 34px;
+        align-items: center;
+        gap: 6px;
+      }
+      .cost-period-btn,
+      .cost-refresh-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 34px;
+        height: 32px;
+        border: 1px solid var(--vcc-border);
+        border-radius: 8px;
+        background: none;
+        color: var(--vcc-text);
+        cursor: pointer;
+        font-family: inherit;
+        transition: all 0.15s ease;
+      }
+      .cost-period-btn:hover:not(:disabled),
+      .cost-refresh-btn:hover {
+        border-color: var(--vcc-accent);
+        color: var(--vcc-accent);
+        background: rgba(0,0,0,0.04);
+      }
+      .cost-period-btn:disabled {
+        opacity: 0.38;
+        cursor: default;
+        pointer-events: none;
+      }
+      .cost-period-btn ha-icon,
+      .cost-refresh-btn ha-icon {
+        --mdc-icon-size: 18px;
+      }
+      .cost-period-label {
+        min-width: 0;
+        text-align: center;
+        color: var(--vcc-text);
+        font-size: 0.88em;
+        font-weight: 600;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
       .cost-summary {
         display: grid;
@@ -1963,20 +2088,25 @@ class VictronChargeControllerCard extends LitElement {
         --mdc-icon-size: 18px;
       }
       @media (max-width: 420px) {
-        .costs-toolbar {
-          align-items: stretch;
-          flex-direction: column;
-        }
-        .cost-range-group {
-          display: grid;
-          grid-template-columns: repeat(4, minmax(0, 1fr));
-        }
         .cost-range-btn {
-          justify-content: center;
-          padding: 7px 6px;
+          gap: 3px;
+          padding: 7px 4px;
+          font-size: 0.74em;
         }
-        .cost-range-btn span {
-          display: none;
+        .cost-range-btn ha-icon {
+          --mdc-icon-size: 14px;
+        }
+        .cost-period-nav {
+          grid-template-columns: 32px minmax(0, 1fr) 32px 32px;
+          gap: 5px;
+        }
+        .cost-period-btn,
+        .cost-refresh-btn {
+          width: 32px;
+          height: 31px;
+        }
+        .cost-period-label {
+          font-size: 0.82em;
         }
         .cost-summary {
           grid-template-columns: 1fr;
