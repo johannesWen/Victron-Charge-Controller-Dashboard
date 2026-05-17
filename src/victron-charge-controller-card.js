@@ -697,7 +697,7 @@ class VictronChargeControllerCard extends LitElement {
 
     // SVG dimensions
     const chartW = 600;
-    const chartH = 260;
+    const chartH = 280;
     const padL = 50;
     const padR = 40;
     const padT = 38;
@@ -1102,7 +1102,7 @@ class VictronChargeControllerCard extends LitElement {
     if (!points.length) return null;
 
     const chartW = 640;
-    const chartH = 280;
+    const chartH = 320;
     const padL = 54;
     const padR = 24;
     const padT = 36;
@@ -2038,24 +2038,24 @@ class VictronChargeControllerCard extends LitElement {
       .cost-summary {
         display: grid;
         grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 8px;
+        gap: 6px;
       }
       .cost-summary-item {
         min-width: 0;
-        padding: 10px 12px;
+        padding: 8px 9px;
         border: 1px solid var(--vcc-border);
         border-radius: 8px;
       }
       .cost-summary-item span {
         display: block;
         color: var(--vcc-text2);
-        font-size: 0.76em;
-        margin-bottom: 3px;
+        font-size: 0.72em;
+        margin-bottom: 2px;
       }
       .cost-summary-item strong {
         display: block;
         color: var(--vcc-text);
-        font-size: 0.96em;
+        font-size: 0.9em;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -2114,7 +2114,17 @@ class VictronChargeControllerCard extends LitElement {
           font-size: 0.82em;
         }
         .cost-summary {
-          grid-template-columns: 1fr;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 4px;
+        }
+        .cost-summary-item {
+          padding: 7px 5px;
+        }
+        .cost-summary-item span {
+          font-size: 0.68em;
+        }
+        .cost-summary-item strong {
+          font-size: 0.78em;
         }
       }
     `;
