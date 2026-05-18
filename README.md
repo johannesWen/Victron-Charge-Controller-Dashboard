@@ -4,14 +4,37 @@
 
 # Victron Charge Controller Card
 
+[![hacs][hacs-badge]][hacs-url]
+[![release][release-badge]][release-url]
+[![license][license-badge]][license-url]
+
 A custom [Home Assistant](https://www.home-assistant.io/) Lovelace dashboard card for controlling and monitoring a Victron ESS system via the [Victron Charge Controller](https://github.com/johannesWen/Victron-Charge-Controller) integration.
 
 | Settings Card | Plan Card |
 |:---:|:---:|
-| <a href="assets/screenshots/settings_card.png"><img src="https://raw.githubusercontent.com/johannesWen/Victron-Charge-Controller-Dashboard/main/assets/screenshots/settings_card.png" width="400"></a> | <a href="assets/screenshots/settings_card.png"><img src="https://raw.githubusercontent.com/johannesWen/Victron-Charge-Controller-Dashboard/refs/heads/main/assets/screenshots/plan_card.png" width="400"></a> |
+| <a href="assets/screenshots/settings_card.png"><img src="https://raw.githubusercontent.com/johannesWen/Victron-Charge-Controller-Dashboard/main/assets/screenshots/settings_card.png" width="400"></a> | <a href="assets/screenshots/plan_card.png"><img src="https://raw.githubusercontent.com/johannesWen/Victron-Charge-Controller-Dashboard/refs/heads/main/assets/screenshots/plan_card.png" width="400"></a> |
 | **Costs Card** | |
-| <a href="assets/screenshots/settings_card.png"><img src="https://raw.githubusercontent.com/johannesWen/Victron-Charge-Controller-Dashboard/refs/heads/main/assets/screenshots/costs_card.png" width="400"></a> | |
+| <a href="assets/screenshots/costs_card.png"><img src="https://raw.githubusercontent.com/johannesWen/Victron-Charge-Controller-Dashboard/refs/heads/main/assets/screenshots/costs_card.png" width="400"></a> | |
 
+<!-- Badges -->
+[hacs-badge]: https://img.shields.io/badge/HACS-CUSTOM-41BDF5?style=flat-square
+[hacs-url]: https://github.com/hacs/integration
+[release-badge]: https://img.shields.io/github/v/release/johannesWen/Victron-Charge-Controller-Dashboard?style=flat-square
+[release-url]: https://github.com/johannesWen/Victron-Charge-Controller-Dashboard/releases
+[license-badge]: https://img.shields.io/github/license/johannesWen/Victron-Charge-Controller-Dashboard?style=flat-square
+[license-url]: LICENSE
+
+<!-- Table of Contents -->
+## Table of Contents
+
+- [Features](#features)
+- [Prerequisites](#prerequisites)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [Troubleshooting](#troubleshooting)
+- [Development](#development)
+- [Contributing](#contributing)
+- [License](#license)
 
 ## Features
 
@@ -80,6 +103,15 @@ view: settings
 | `entity_prefix` | string | `victron_charge_control`   | Common prefix of all entity IDs from the integration |
 | `view`          | string | `settings`                 | Card view: `settings`, `plan`, or `costs`          |
 
+## Troubleshooting
+
+| Issue | Solution |
+| ----- | -------- |
+| Card not showing in the Add Card dialog | Clear your browser cache or do a hard refresh (`Ctrl+Shift+R` / `Cmd+Shift+R`) |
+| Entities not found | Verify the `entity_prefix` matches your integration setup. Check that the [Victron Charge Controller](https://github.com/johannesWen/Victron-Charge-Controller) integration is installed and configured |
+| Card shows "Custom element doesn't exist" | Ensure the resource URL is correct in **Settings → Dashboards → Resources** and ends with `.js` |
+| Costs chart is empty | The Costs view relies on Home Assistant long-term statistics. Make sure the recorder is enabled and has collected data for your energy sensors |
+
 ## Development
 
 ### Building from source
@@ -124,6 +156,16 @@ Stop the container with:
 ```bash
 docker compose down
 ```
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request. For major changes, please open an issue first to discuss what you would like to change.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
 ## License
 
