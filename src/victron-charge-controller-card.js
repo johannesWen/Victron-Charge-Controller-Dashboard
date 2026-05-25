@@ -66,6 +66,7 @@ class VictronChargeControllerCard extends LitElement {
     this._pendingThresholds = {};
     this._costRange = 'day';
     this._costRangeOffsets = { day: 0, week: 0, month: 0, year: 0 };
+    this._costMode = 'cost';
     this._costStatsState = { status: 'idle', key: null, points: [], error: null };
   }
 
@@ -921,13 +922,13 @@ class VictronChargeControllerCard extends LitElement {
   }
 
   _costStatsKey(range) {
-    const ids = [
-      this._eid('sensor', 'grid_energy_cost'),
-      this._eid('sensor', 'grid_energy_revenue'),
-    ];
+    const isEnergy = this._costMode === 'energy';
+    const ids = isEnergy
+      ? [this._eid('sensor', 'grid_energy_import'), this._eid('sensor', 'grid_energy_export')]
+      : [this._eid('sensor', 'grid_energy_cost'), this._eid('sensor', 'grid_energy_revenue')];
     const window = this._getCostRangeWindow(range);
     const endKey = window.offset === 0 ? 'current' : window.end.getTime();
-    return `${range}|${window.period}|${window.offset}|${window.start.getTime()}|${endKey}|${this._costRefreshBucket(range)}|${ids.join(',')}`;
+    return `${this._costMode}|${range}|${window.period}|${window.offset}|${window.start.getTime()}|${endKey}|${this._costRefreshBucket(range)}|${ids.join(',')}`;
   }
 
   _setCostRange(range) {
@@ -942,6 +943,13 @@ class VictronChargeControllerCard extends LitElement {
     }
     this._costRange = range;
     this._costRangeOffsets = { ...this._costRangeOffsets, [range]: 0 };
+    this._costStatsState = { status: 'idle', key: null, points: [], error: null };
+    this.requestUpdate();
+  }
+
+  _setCostMode(mode) {
+    if (this._costMode === mode) return;
+    this._costMode = mode;
     this._costStatsState = { status: 'idle', key: null, points: [], error: null };
     this.requestUpdate();
   }
@@ -984,15 +992,16 @@ class VictronChargeControllerCard extends LitElement {
     if (this._costStatsState.key === key && this._costStatsState.status !== 'idle') return;
 
     const window = this._getCostRangeWindow(range);
-    const costId = this._eid('sensor', 'grid_energy_cost');
-    const revenueId = this._eid('sensor', 'grid_energy_revenue');
+    const isEnergy = this._costMode === 'energy';
+    const entityId1 = isEnergy ? this._eid('sensor', 'grid_energy_import') : this._eid('sensor', 'grid_energy_cost');
+    const entityId2 = isEnergy ? this._eid('sensor', 'grid_energy_export') : this._eid('sensor', 'grid_energy_revenue');
 
     this._costStatsState = { status: 'loading', key, points: [], error: null };
     this.requestUpdate();
 
     const statsMessage = {
       type: 'recorder/statistics_during_period',
-      statistic_ids: [costId, revenueId],
+      statistic_ids: [entityId1, entityId2],
       start_time: window.queryStart.toISOString(),
       end_time: window.end.toISOString(),
       period: window.period,
@@ -1008,7 +1017,7 @@ class VictronChargeControllerCard extends LitElement {
       }))
       .then((result) => {
         if (this._costRange !== range || this._costStatsState.key !== key) return;
-        const points = this._buildCostPoints(result || {}, costId, revenueId, window);
+        const points = this._buildCostPoints(result || {}, entityId1, entityId2, window);
         this._costStatsState = {
           status: points.length > 0 ? 'ready' : 'empty',
           key,
@@ -1098,8 +1107,24 @@ class VictronChargeControllerCard extends LitElement {
     return `${sign}${amount.toFixed(2)} EUR`;
   }
 
+  _formatEnergy(value, digits = 2) {
+    const amount = Number(value) || 0;
+    return `${amount.toFixed(digits)} kWh`;
+  }
+
+  _formatSignedEnergy(value) {
+    const amount = Number(value) || 0;
+    const sign = amount > 0 ? '+' : '';
+    return `${sign}${amount.toFixed(2)} kWh`;
+  }
+
   _renderCostChart(points) {
     if (!points.length) return null;
+
+    const isEnergy = this._costMode === 'energy';
+    const unitLabel = isEnergy ? 'kWh' : 'EUR';
+    const costLabel = isEnergy ? 'import' : 'cost';
+    const revenueLabel = isEnergy ? 'export' : 'revenue';
 
     const chartW = 640;
     const chartH = 320;
@@ -1132,7 +1157,7 @@ class VictronChargeControllerCard extends LitElement {
             stroke="var(--vcc-border, #e0e0e0)" stroke-width="0.5"
             stroke-dasharray="${t.val === 0 ? 'none' : '4,3'}" />
           <text x="${padL - 7}" y="${t.y + 3.5}" text-anchor="end"
-            class="cost-axis-label">${this._formatMoney(t.val, t.val >= 10 ? 0 : 1).replace(' EUR', '')}</text>
+            class="cost-axis-label">${isEnergy ? this._formatEnergy(t.val, t.val >= 10 ? 0 : 1).replace(' kWh', '') : this._formatMoney(t.val, t.val >= 10 ? 0 : 1).replace(' EUR', '')}</text>
         `)}
 
         ${points.map((point, i) => {
@@ -1143,12 +1168,12 @@ class VictronChargeControllerCard extends LitElement {
             <rect x="${xCenter - barW - barGap / 2}" y="${yPos(point.cost)}"
               width="${barW}" height="${Math.max(1, costH)}"
               fill="var(--vcc-error, #f44336)" opacity="0.72" rx="1.5">
-              <title>${point.label} cost: ${this._formatMoney(point.cost)}</title>
+              <title>${point.label} ${costLabel}: ${isEnergy ? this._formatEnergy(point.cost) : this._formatMoney(point.cost)}</title>
             </rect>
             <rect x="${xCenter + barGap / 2}" y="${yPos(point.revenue)}"
               width="${barW}" height="${Math.max(1, revenueH)}"
               fill="var(--vcc-success, #4caf50)" opacity="0.78" rx="1.5">
-              <title>${point.label} revenue: ${this._formatMoney(point.revenue)}</title>
+              <title>${point.label} ${revenueLabel}: ${isEnergy ? this._formatEnergy(point.revenue) : this._formatMoney(point.revenue)}</title>
             </rect>
             ${((range === 'day' && new Date(point.startMs).getHours() % labelEvery === 0)
               || (range !== 'day' && (i % labelEvery === 0 || i === points.length - 1))) ? svg`
@@ -1159,7 +1184,7 @@ class VictronChargeControllerCard extends LitElement {
         })}
 
         <text x="${padL + 0}" y="${padT - 14}" text-anchor="end"
-          class="cost-axis-unit">EUR</text>
+          class="cost-axis-unit">${unitLabel}</text>
       </svg>
     `;
   }
@@ -1168,32 +1193,40 @@ class VictronChargeControllerCard extends LitElement {
     const totalCost = points.reduce((sum, p) => sum + p.cost, 0);
     const totalRevenue = points.reduce((sum, p) => sum + p.revenue, 0);
     const net = totalRevenue - totalCost;
+    const isEnergy = this._costMode === 'energy';
+    const costLabel = isEnergy ? 'Import' : 'Cost';
+    const revenueLabel = isEnergy ? 'Export' : 'Revenue';
+    const netLabel = 'Net';
     return html`
       <div class="cost-summary">
         <div class="cost-summary-item cost">
-          <span>Cost</span>
-          <strong>${this._formatMoney(totalCost)}</strong>
+          <span>${costLabel}</span>
+          <strong>${isEnergy ? this._formatEnergy(totalCost) : this._formatMoney(totalCost)}</strong>
         </div>
         <div class="cost-summary-item revenue">
-          <span>Revenue</span>
-          <strong>${this._formatMoney(totalRevenue)}</strong>
+          <span>${revenueLabel}</span>
+          <strong>${isEnergy ? this._formatEnergy(totalRevenue) : this._formatMoney(totalRevenue)}</strong>
         </div>
         <div class="cost-summary-item ${net >= 0 ? 'positive' : 'negative'}">
-          <span>Net</span>
-          <strong>${this._formatSignedMoney(net)}</strong>
+          <span>${netLabel}</span>
+          <strong>${isEnergy ? this._formatSignedEnergy(net) : this._formatSignedMoney(net)}</strong>
         </div>
       </div>
     `;
   }
 
-  _renderCostsView() {
-    const costEntity = this._state('sensor', 'grid_energy_cost');
-    const revenueEntity = this._state('sensor', 'grid_energy_revenue');
-    if (!costEntity || !revenueEntity) {
+  _renderHistoryView() {
+    const isEnergy = this._costMode === 'energy';
+    const costEntity1 = isEnergy ? this._state('sensor', 'grid_energy_import') : this._state('sensor', 'grid_energy_cost');
+    const costEntity2 = isEnergy ? this._state('sensor', 'grid_energy_export') : this._state('sensor', 'grid_energy_revenue');
+    if (!costEntity1 || !costEntity2) {
+      const msg = isEnergy
+        ? 'Grid energy import and export sensors are not available for this entity prefix.'
+        : 'Grid energy cost and revenue sensors are not available for this entity prefix.';
       return html`
         <div class="warning">
           <ha-icon icon="mdi:alert-outline"></ha-icon>
-          <span>Grid energy cost and revenue sensors are not available for this entity prefix.</span>
+          <span>${msg}</span>
         </div>`;
     }
 
@@ -1205,9 +1238,30 @@ class VictronChargeControllerCard extends LitElement {
     const costOffset = this._costRangeOffsets?.[range] ?? 0;
     const periodLabel = this._formatCostPeriodLabel(range);
 
+    const costLegendLabel = isEnergy ? 'Import' : 'Cost';
+    const revenueLegendLabel = isEnergy ? 'Export' : 'Revenue';
+
     return html`
-      <div class="costs-container">
-        <div class="costs-toolbar">
+      <div class="history-container">
+        <div class="history-toolbar">
+          <div class="cost-mode-group">
+            <button
+              class="cost-mode-btn ${!isEnergy ? 'active' : ''}"
+              @click=${() => this._setCostMode('cost')}
+              title="Cost / Revenue in EUR"
+            >
+              <ha-icon icon="mdi:currency-eur"></ha-icon>
+              <span>EUR</span>
+            </button>
+            <button
+              class="cost-mode-btn ${isEnergy ? 'active' : ''}"
+              @click=${() => this._setCostMode('energy')}
+              title="Import / Export in kWh"
+            >
+              <ha-icon icon="mdi:transmission-tower"></ha-icon>
+              <span>kWh</span>
+            </button>
+          </div>
           <div class="cost-range-group">
             ${Object.entries(COST_RANGES).map(([key, meta]) => html`
               <button
@@ -1262,7 +1316,7 @@ class VictronChargeControllerCard extends LitElement {
         ${state.status === 'empty' ? html`
           <div class="warning">
             <ha-icon icon="mdi:alert-outline"></ha-icon>
-            <span>No cost statistics are available for this range. Check that recorder includes these sensors and has enough statistics data.</span>
+            <span>No ${isEnergy ? 'energy' : 'cost'} statistics are available for this range. Check that recorder includes these sensors and has enough statistics data.</span>
           </div>
         ` : nothing}
 
@@ -1272,11 +1326,11 @@ class VictronChargeControllerCard extends LitElement {
           <div class="plan-legend">
             <div class="plan-legend-item">
               <span class="plan-legend-dot" style="background: var(--vcc-error)"></span>
-              <span>Cost</span>
+              <span>${costLegendLabel}</span>
             </div>
             <div class="plan-legend-item">
               <span class="plan-legend-dot" style="background: var(--vcc-success)"></span>
-              <span>Revenue</span>
+              <span>${revenueLegendLabel}</span>
             </div>
           </div>
         ` : nothing}
@@ -1503,10 +1557,10 @@ class VictronChargeControllerCard extends LitElement {
     const feedInStatus = this._val('sensor', 'grid_feed_in_status') || 'default';
     const feedInMeta = FEED_IN_META[feedInStatus] || FEED_IN_META.default;
     const view = this.config.view || 'settings';
-    const viewTitle = view === 'plan' ? 'Plan' : (view === 'costs' ? 'Costs' : 'Settings');
+    const viewTitle = view === 'plan' ? 'Plan' : (view === 'history' ? 'History' : 'Settings');
     const viewIcon = view === 'plan'
       ? 'mdi:calendar'
-      : (view === 'costs' ? 'mdi:chart-bar' : 'mdi:battery-charging-wireless');
+      : (view === 'history' ? 'mdi:chart-bar' : 'mdi:battery-charging-wireless');
 
     return html`
       <ha-card>
@@ -1529,7 +1583,7 @@ class VictronChargeControllerCard extends LitElement {
         <div class="card-content">
           ${view === 'plan'
             ? this._renderPlanView()
-            : (view === 'costs' ? this._renderCostsView() : this._renderControlsView())}
+            : (view === 'history' ? this._renderHistoryView() : this._renderControlsView())}
         </div>
       </ha-card>`;
   }
@@ -1938,12 +1992,12 @@ class VictronChargeControllerCard extends LitElement {
       }
 
       /* ── Cost chart ────────────────────────────── */
-      .costs-container {
+      .history-container {
         display: flex;
         flex-direction: column;
         gap: 12px;
       }
-      .costs-toolbar {
+      .history-toolbar {
         display: flex;
         flex-direction: column;
         align-items: stretch;
@@ -1988,6 +2042,38 @@ class VictronChargeControllerCard extends LitElement {
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+      }
+      .cost-mode-group {
+        display: flex;
+        gap: 4px;
+      }
+      .cost-mode-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 3px;
+        padding: 7px 10px;
+        border: 1px solid var(--vcc-border);
+        border-radius: 8px;
+        background: none;
+        color: var(--vcc-text2);
+        cursor: pointer;
+        font-size: 0.78em;
+        font-family: inherit;
+        transition: all 0.15s ease;
+      }
+      .cost-mode-btn ha-icon {
+        --mdc-icon-size: 16px;
+      }
+      .cost-mode-btn:hover {
+        border-color: var(--vcc-accent);
+        color: var(--vcc-accent);
+      }
+      .cost-mode-btn.active {
+        background: rgba(33,150,243,0.12);
+        border-color: var(--vcc-info);
+        color: var(--vcc-info);
+        font-weight: 600;
       }
       .cost-period-nav {
         display: grid;
@@ -2101,6 +2187,13 @@ class VictronChargeControllerCard extends LitElement {
         .cost-range-btn ha-icon {
           --mdc-icon-size: 14px;
         }
+        .cost-mode-btn {
+          padding: 6px 7px;
+          font-size: 0.74em;
+        }
+        .cost-mode-btn ha-icon {
+          --mdc-icon-size: 14px;
+        }
         .cost-period-nav {
           grid-template-columns: 32px minmax(0, 1fr) 32px 32px;
           gap: 5px;
@@ -2167,7 +2260,7 @@ class VictronChargeControllerCardEditor extends LitElement {
           >
             <option value="settings" ?selected=${(this.config.view || 'settings') === 'settings'}>Settings</option>
             <option value="plan" ?selected=${this.config.view === 'plan'}>Plan</option>
-            <option value="costs" ?selected=${this.config.view === 'costs'}>Costs</option>
+            <option value="history" ?selected=${this.config.view === 'history'}>History</option>
           </select>
           <small>Choose which view this card displays</small>
         </div>
