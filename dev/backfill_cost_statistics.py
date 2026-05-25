@@ -57,6 +57,8 @@ DEFAULT_TZ = "Europe/Berlin"
 class HourlyTotals:
     cost: list[dict[str, Any]]
     revenue: list[dict[str, Any]]
+    energy_import: list[dict[str, Any]]
+    energy_export: list[dict[str, Any]]
 
 
 @dataclass
@@ -246,6 +248,8 @@ def build_hourly_totals(
     tz_name: str,
     base_cost: float,
     base_revenue: float,
+    base_import: float = 0.0,
+    base_export: float = 0.0,
     now: datetime | None = None,
 ) -> HourlyTotals:
     tz = ZoneInfo(tz_name)
@@ -256,11 +260,19 @@ def build_hourly_totals(
 
     cost = base_cost
     revenue = base_revenue
+    energy_import = base_import
+    energy_export = base_export
     cost_rows = [
         stat_row(first_day - timedelta(hours=1), cost),
     ]
     revenue_rows = [
         stat_row(first_day - timedelta(hours=1), revenue),
+    ]
+    import_rows = [
+        stat_row(first_day - timedelta(hours=1), energy_import),
+    ]
+    export_rows = [
+        stat_row(first_day - timedelta(hours=1), energy_export),
     ]
 
     current = first_day
@@ -278,11 +290,21 @@ def build_hourly_totals(
             cost += feed_in * abs(price)
             revenue += consumption * abs(price)
 
+        energy_import += consumption
+        energy_export += feed_in
+
         cost_rows.append(stat_row(current, cost))
         revenue_rows.append(stat_row(current, revenue))
+        import_rows.append(stat_row(current, energy_import))
+        export_rows.append(stat_row(current, energy_export))
         current += timedelta(hours=1)
 
-    return HourlyTotals(cost=cost_rows, revenue=revenue_rows)
+    return HourlyTotals(
+        cost=cost_rows,
+        revenue=revenue_rows,
+        energy_import=import_rows,
+        energy_export=export_rows,
+    )
 
 
 def stat_row(start: datetime, value: float) -> dict[str, Any]:
@@ -294,7 +316,7 @@ def stat_row(start: datetime, value: float) -> dict[str, Any]:
     }
 
 
-def import_payload(statistic_id: str, rows: list[dict[str, Any]]) -> dict[str, Any]:
+def import_payload(statistic_id: str, rows: list[dict[str, Any]], unit: str = "EUR") -> dict[str, Any]:
     return {
         "type": "recorder/import_statistics",
         "metadata": {
@@ -305,7 +327,7 @@ def import_payload(statistic_id: str, rows: list[dict[str, Any]]) -> dict[str, A
             "source": "recorder",
             "statistic_id": statistic_id,
             "unit_class": None,
-            "unit_of_measurement": "EUR",
+            "unit_of_measurement": unit,
         },
         "stats": rows,
     }
@@ -330,6 +352,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--base-cost", type=float, default=0.0)
     parser.add_argument("--base-revenue", type=float, default=0.0)
+    parser.add_argument("--base-import", type=float, default=0.0, help="Base cumulative import kWh.")
+    parser.add_argument("--base-export", type=float, default=0.0, help="Base cumulative export kWh.")
     parser.add_argument(
         "--clear-first",
         action="store_true",
@@ -351,20 +375,30 @@ def main() -> int:
 
     cost_id = f"sensor.{args.prefix}_grid_energy_cost"
     revenue_id = f"sensor.{args.prefix}_grid_energy_revenue"
+    import_id = f"sensor.{args.prefix}_grid_energy_import"
+    export_id = f"sensor.{args.prefix}_grid_energy_export"
     totals = build_hourly_totals(
         days=args.days,
         tz_name=args.timezone,
         base_cost=args.base_cost,
         base_revenue=args.base_revenue,
+        base_import=args.base_import,
+        base_export=args.base_export,
     )
 
     print(f"Cost statistic:    {cost_id}")
     print(f"Revenue statistic: {revenue_id}")
+    print(f"Import statistic:  {import_id}")
+    print(f"Export statistic:  {export_id}")
     print(f"Cost rows:         {len(totals.cost)}")
     print(f"Revenue rows:      {len(totals.revenue)}")
+    print(f"Import rows:        {len(totals.energy_import)}")
+    print(f"Export rows:        {len(totals.energy_export)}")
     print(f"Range:             {totals.cost[0]['start']} -> {totals.cost[-1]['start']}")
     print(f"Final cost sum:    {totals.cost[-1]['sum']:.4f} EUR")
     print(f"Final revenue sum: {totals.revenue[-1]['sum']:.4f} EUR")
+    print(f"Final import sum:  {totals.energy_import[-1]['sum']:.4f} kWh")
+    print(f"Final export sum:  {totals.energy_export[-1]['sum']:.4f} kWh")
 
     if args.dry_run:
         print("\nSample cost rows:")
@@ -381,16 +415,20 @@ def main() -> int:
 
     with HassWebSocket(args.url, args.token) as hass:
         if args.clear_first:
-            print("Clearing existing cost/revenue statistics...")
+            print("Clearing existing cost/revenue/energy statistics...")
             hass.command({
                 "type": "recorder/clear_statistics",
-                "statistic_ids": [cost_id, revenue_id],
+                "statistic_ids": [cost_id, revenue_id, import_id, export_id],
             })
 
         print("Importing cost statistics...")
         hass.command(import_payload(cost_id, totals.cost))
         print("Importing revenue statistics...")
         hass.command(import_payload(revenue_id, totals.revenue))
+        print("Importing energy import statistics...")
+        hass.command(import_payload(import_id, totals.energy_import, unit="kWh"))
+        print("Importing energy export statistics...")
+        hass.command(import_payload(export_id, totals.energy_export, unit="kWh"))
 
     print("Done. Refresh the Costs view after Home Assistant finishes recorder writes.")
     return 0

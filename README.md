@@ -13,7 +13,7 @@ A custom [Home Assistant](https://www.home-assistant.io/) Lovelace dashboard car
 | Settings Card | Plan Card |
 |:---:|:---:|
 | <a href="assets/screenshots/settings_card.png"><img src="https://raw.githubusercontent.com/johannesWen/Victron-Charge-Controller-Dashboard/main/assets/screenshots/settings_card.png" width="400"></a> | <a href="assets/screenshots/plan_card.png"><img src="https://raw.githubusercontent.com/johannesWen/Victron-Charge-Controller-Dashboard/refs/heads/main/assets/screenshots/plan_card.png" width="400"></a> |
-| **Costs Card** | |
+| **History Card** | |
 | <a href="assets/screenshots/costs_card.png"><img src="https://raw.githubusercontent.com/johannesWen/Victron-Charge-Controller-Dashboard/refs/heads/main/assets/screenshots/costs_card.png" width="400"></a> | |
 
 <!-- Badges -->
@@ -86,7 +86,7 @@ Add the card to your dashboard via the UI editor or YAML.
 ### UI Editor
 
 1. Edit your dashboard → **Add Card** → search for **Victron Charge Controller**
-2. Choose the Settings, Plan, or Costs view in the visual editor
+2. Choose the Settings, Plan, or History view in the visual editor
 
 ### YAML
 
@@ -101,7 +101,7 @@ view: settings
 | --------------- | ------ | -------------------------- | -------------------------------------------------- |
 | `title`         | string | `Victron Charge Control`   | Card title displayed in the header                 |
 | `entity_prefix` | string | `victron_charge_control`   | Common prefix of all entity IDs from the integration |
-| `view`          | string | `settings`                 | Card view: `settings`, `plan`, or `costs`          |
+| `view`          | string | `settings`                 | Card view: `settings`, `plan`, or `history`         |
 
 ## Troubleshooting
 
@@ -110,7 +110,7 @@ view: settings
 | Card not showing in the Add Card dialog | Clear your browser cache or do a hard refresh (`Ctrl+Shift+R` / `Cmd+Shift+R`) |
 | Entities not found | Verify the `entity_prefix` matches your integration setup. Check that the [Victron Charge Controller](https://github.com/johannesWen/Victron-Charge-Controller) integration is installed and configured |
 | Card shows "Custom element doesn't exist" | Ensure the resource URL is correct in **Settings → Dashboards → Resources** and ends with `.js` |
-| Costs chart is empty | The Costs view relies on Home Assistant long-term statistics. Make sure the recorder is enabled and has collected data for your energy sensors |
+| History chart is empty | The History view relies on Home Assistant long-term statistics. Make sure the recorder is enabled and has collected data for your energy sensors |
 
 ## Development
 
