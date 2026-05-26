@@ -68,11 +68,14 @@ class VictronChargeControllerCard extends LitElement {
     this._costRangeOffsets = { day: 0, week: 0, month: 0, year: 0 };
     this._costMode = 'cost';
     this._costStatsState = { status: 'idle', key: null, points: [], error: null };
+    this._tooltipBar = null;
+    this._tooltipHideTimer = null;
   }
 
   disconnectedCallback() {
     super.disconnectedCallback();
     this._finishThresholdDrag(false);
+    if (this._tooltipHideTimer) clearTimeout(this._tooltipHideTimer);
   }
 
   // ── Lovelace lifecycle ──────────────────────────────────
@@ -672,7 +675,7 @@ class VictronChargeControllerCard extends LitElement {
 
   // ── Shared chart renderer ────────────────────────────────
 
-  _renderPriceChart(enrichedPlan, { showCurrentHour = false, chargeThreshold = null, dischargeThreshold = null, forcedScaleMin = null, forcedScaleMax = null } = {}) {
+  _renderPriceChart(enrichedPlan, { showCurrentHour = false, chargeThreshold = null, dischargeThreshold = null, forcedScaleMin = null, forcedScaleMax = null, chartId = 'today' } = {}) {
     // Extract prices and determine scale
     const validPrices = enrichedPlan
       .map(p => p.price)
@@ -780,25 +783,27 @@ class VictronChargeControllerCard extends LitElement {
           const displayAction = entry.displayAction || entry.action;
           const overlayFill = isPast ? null : blockedOverlayFill(entry);
           return svg`
-            <rect
-              x="${x}" y="${barY}" width="${w}" height="${barH}"
-              fill="${isPast ? actionColor('idle') : actionColor(displayAction)}"
-              opacity="${isPast ? 0.35 : (isCurrent ? 1 : 0.7)}"
-              rx="1.5"
-            />
-            ${overlayFill ? svg`
+            <g class="plan-bar-group" @click=${() => this._onBarClick(chartId, i)}>
               <rect
                 x="${x}" y="${barY}" width="${w}" height="${barH}"
-                fill="${overlayFill}"
-                opacity="${isCurrent ? 1 : 0.9}"
+                fill="${isPast ? actionColor('idle') : actionColor(displayAction)}"
+                opacity="${isPast ? 0.35 : (isCurrent ? 1 : 0.7)}"
                 rx="1.5"
               />
-            ` : nothing}
-            ${isCurrent ? svg`
-              <rect x="${x - 1}" y="${padT}" width="${w + 2}" height="${plotH}"
-                fill="none" stroke="var(--vcc-accent, #03a9f4)"
-                stroke-width="1.5" stroke-dasharray="4,3" rx="2" />
-            ` : nothing}
+              ${overlayFill ? svg`
+                <rect
+                  x="${x}" y="${barY}" width="${w}" height="${barH}"
+                  fill="${overlayFill}"
+                  opacity="${isCurrent ? 1 : 0.9}"
+                  rx="1.5"
+                />
+              ` : nothing}
+              ${isCurrent ? svg`
+                <rect x="${x - 1}" y="${padT}" width="${w + 2}" height="${plotH}"
+                  fill="none" stroke="var(--vcc-accent, #03a9f4)"
+                  stroke-width="1.5" stroke-dasharray="4,3" rx="2" />
+              ` : nothing}
+            </g>
           `;
         })}
 
@@ -855,8 +860,57 @@ class VictronChargeControllerCard extends LitElement {
             >${String(h).padStart(2, '0')}</text>
           `;
         })}
+
+        <!-- Bar tooltip -->
+        ${(() => {
+          if (!this._tooltipBar || this._tooltipBar.chartId !== chartId) return nothing;
+          const { index } = this._tooltipBar;
+          if (index < 0 || index >= enrichedPlan.length) return nothing;
+          const entry = enrichedPlan[index];
+          const price = Number(entry.price);
+          if (!Number.isFinite(price)) return nothing;
+          const h = entry.hour ?? index;
+          const barCenterX = padL + index * barW + barW / 2;
+          const barTopY = yPos(price);
+          const barBaseY = zeroInRange ? yPos(0) : padT + plotH;
+          const barTop = Math.min(barTopY, barBaseY);
+          const tw = 96;
+          const th = 38;
+          let ty = barTop - th - 8;
+          if (ty < 2) ty = Math.max(barTopY, barBaseY) + 8;
+          let tx = barCenterX - tw / 2;
+          tx = Math.max(padL, Math.min(tx, chartW - padR - tw));
+          const timeLabel = `${String(h).padStart(2, '0')}:00`;
+          const priceLabel = `${price.toFixed(2)} ct/kWh`;
+          return svg`
+            <g class="plan-bar-tooltip">
+              <rect x="${tx}" y="${ty}" width="${tw}" height="${th}" rx="5"
+                fill="var(--vcc-card-bg, var(--card-background-color, #fff))"
+                fill-opacity="0.95"
+                stroke="var(--vcc-border, #e0e0e0)" stroke-width="0.8" />
+              <text x="${tx + tw / 2}" y="${ty + 15}" text-anchor="middle"
+                class="plan-tooltip-time">${timeLabel}</text>
+              <text x="${tx + tw / 2}" y="${ty + 30}" text-anchor="middle"
+                class="plan-tooltip-price">${priceLabel}</text>
+            </g>
+          `;
+        })()}
       </svg>
     `;
+  }
+
+  _onBarClick(chartId, index) {
+    if (this._tooltipBar?.chartId === chartId && this._tooltipBar?.index === index) {
+      return;
+    }
+    this._tooltipBar = { chartId, index };
+    if (this._tooltipHideTimer) clearTimeout(this._tooltipHideTimer);
+    this._tooltipHideTimer = setTimeout(() => {
+      this._tooltipBar = null;
+      this._tooltipHideTimer = null;
+      this.requestUpdate();
+    }, 10000);
+    this.requestUpdate();
   }
 
   // ── Cost statistics view ─────────────────────────────────
@@ -1424,12 +1478,12 @@ class VictronChargeControllerCard extends LitElement {
       sharedScaleMax = Math.max(1, Math.ceil(maxP + pRange * 0.1));
     }
 
-    const todayChart = this._renderPriceChart(todayPlan, { showCurrentHour: true, chargeThreshold: ctCharge, dischargeThreshold: ctDischarge, forcedScaleMin: sharedScaleMin, forcedScaleMax: sharedScaleMax });
+    const todayChart = this._renderPriceChart(todayPlan, { showCurrentHour: true, chargeThreshold: ctCharge, dischargeThreshold: ctDischarge, forcedScaleMin: sharedScaleMin, forcedScaleMax: sharedScaleMax, chartId: 'today' });
 
     // Tomorrow chart: render if we have plan entries (even without prices, shows actions)
     const tomorrowHasAnyPrices = tomorrowPlan.some(p => p.price !== undefined && p.price !== null);
     const tomorrowChart = tomorrowHasAnyPrices
-      ? this._renderPriceChart(tomorrowPlan, { chargeThreshold: ctCharge, dischargeThreshold: ctDischarge, forcedScaleMin: sharedScaleMin, forcedScaleMax: sharedScaleMax })
+      ? this._renderPriceChart(tomorrowPlan, { chargeThreshold: ctCharge, dischargeThreshold: ctDischarge, forcedScaleMin: sharedScaleMin, forcedScaleMax: sharedScaleMax, chartId: 'tomorrow' })
       : null;
 
     if (!todayChart && !tomorrowChart) {
@@ -1898,6 +1952,19 @@ class VictronChargeControllerCard extends LitElement {
       .plan-current-hour {
         font-weight: 700;
         fill: var(--vcc-accent, #03a9f4);
+      }
+      .plan-bar-group {
+        cursor: pointer;
+      }
+      .plan-bar-tooltip .plan-tooltip-time {
+        font-size: 16px;
+        font-weight: 600;
+        fill: var(--vcc-text, #212121);
+      }
+      .plan-bar-tooltip .plan-tooltip-price {
+        font-size: 16px;
+        font-weight: 700;
+        fill: var(--vcc-text, #212121);
       }
       .plan-legend {
         display: flex; flex-wrap: wrap; gap: 12px;
