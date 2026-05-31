@@ -1219,16 +1219,14 @@ class VictronChargeControllerCard extends LitElement {
           const costH = padT + plotH - yPos(point.cost);
           const revenueH = padT + plotH - yPos(point.revenue);
           return svg`
-            <rect x="${xCenter - barW - barGap / 2}" y="${yPos(point.cost)}"
-              width="${barW}" height="${Math.max(1, costH)}"
-              fill="var(--vcc-error, #f44336)" opacity="0.72" rx="1.5">
-              <title>${point.label} ${costLabel}: ${isEnergy ? this._formatEnergy(point.cost) : this._formatMoney(point.cost)}</title>
-            </rect>
-            <rect x="${xCenter + barGap / 2}" y="${yPos(point.revenue)}"
-              width="${barW}" height="${Math.max(1, revenueH)}"
-              fill="var(--vcc-success, #4caf50)" opacity="0.78" rx="1.5">
-              <title>${point.label} ${revenueLabel}: ${isEnergy ? this._formatEnergy(point.revenue) : this._formatMoney(point.revenue)}</title>
-            </rect>
+            <g class="cost-bar-group" @click=${() => this._onBarClick('history', i)}>
+              <rect x="${xCenter - barW - barGap / 2}" y="${yPos(point.cost)}"
+                width="${barW}" height="${Math.max(1, costH)}"
+                fill="var(--vcc-error, #f44336)" opacity="0.72" rx="1.5" />
+              <rect x="${xCenter + barGap / 2}" y="${yPos(point.revenue)}"
+                width="${barW}" height="${Math.max(1, revenueH)}"
+                fill="var(--vcc-success, #4caf50)" opacity="0.78" rx="1.5" />
+            </g>
             ${((range === 'day' && new Date(point.startMs).getHours() % labelEvery === 0)
               || (range !== 'day' && (i % labelEvery === 0 || i === points.length - 1))) ? svg`
               <text x="${xCenter}" y="${chartH - 10}" text-anchor="middle"
@@ -1239,6 +1237,37 @@ class VictronChargeControllerCard extends LitElement {
 
         <text x="${padL + 0}" y="${padT - 14}" text-anchor="end"
           class="cost-axis-unit">${unitLabel}</text>
+
+        ${(() => {
+          if (!this._tooltipBar || this._tooltipBar.chartId !== 'history') return nothing;
+          const { index } = this._tooltipBar;
+          if (index < 0 || index >= points.length) return nothing;
+          const point = points[index];
+          const xCenter = padL + index * groupW + groupW / 2;
+          const barTopY = Math.min(yPos(point.cost), yPos(point.revenue));
+          const tw = 120;
+          const th = 52;
+          let ty = barTopY - th - 8;
+          if (ty < 2) ty = Math.max(yPos(point.cost), yPos(point.revenue)) + Math.max(padT + plotH - yPos(point.cost), padT + plotH - yPos(point.revenue)) + 8;
+          let tx = xCenter - tw / 2;
+          tx = Math.max(padL, Math.min(tx, chartW - padR - tw));
+          const costVal = isEnergy ? this._formatEnergy(point.cost) : this._formatMoney(point.cost);
+          const revVal = isEnergy ? this._formatEnergy(point.revenue) : this._formatMoney(point.revenue);
+          return svg`
+            <g class="cost-bar-tooltip">
+              <rect x="${tx}" y="${ty}" width="${tw}" height="${th}" rx="5"
+                fill="var(--vcc-card-bg, var(--card-background-color, #fff))"
+                fill-opacity="0.95"
+                stroke="var(--vcc-border, #e0e0e0)" stroke-width="0.8" />
+              <text x="${tx + tw / 2}" y="${ty + 15}" text-anchor="middle"
+                class="cost-tooltip-time">${point.label}</text>
+              <text x="${tx + tw / 2}" y="${ty + 31}" text-anchor="middle"
+                class="cost-tooltip-cost">${costLabel}: ${costVal}</text>
+              <text x="${tx + tw / 2}" y="${ty + 47}" text-anchor="middle"
+                class="cost-tooltip-revenue">${revenueLabel}: ${revVal}</text>
+            </g>
+          `;
+        })()}
       </svg>
     `;
   }
@@ -2233,6 +2262,24 @@ class VictronChargeControllerCard extends LitElement {
       .cost-axis-unit {
         font-size: 16px;
         fill: var(--vcc-text2, #757575);
+      }
+      .cost-bar-group {
+        cursor: pointer;
+      }
+      .cost-bar-tooltip .cost-tooltip-time {
+        font-size: 16px;
+        font-weight: 600;
+        fill: var(--vcc-text, #212121);
+      }
+      .cost-bar-tooltip .cost-tooltip-cost {
+        font-size: 16px;
+        font-weight: 700;
+        fill: var(--vcc-error, #f44336);
+      }
+      .cost-bar-tooltip .cost-tooltip-revenue {
+        font-size: 16px;
+        font-weight: 700;
+        fill: var(--vcc-success, #4caf50);
       }
       .cost-loading {
         display: flex;
