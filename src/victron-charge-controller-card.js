@@ -619,6 +619,7 @@ class VictronChargeControllerCard extends LitElement {
       ${this._renderSection('Battery Limits', 'mdi:battery-medium', html`
         ${this._renderSlider('Min SOC', 'min_soc', '%')}
         ${this._renderSlider('Max SOC', 'max_soc', '%')}
+        ${this._renderSlider('SOC Hysteresis', 'soc_hysteresis', '%')}
       `)}
 
       <!-- Grid Settings -->
