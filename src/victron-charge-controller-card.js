@@ -311,6 +311,36 @@ class VictronChargeControllerCard extends LitElement {
       </div>`;
   }
 
+  _renderPlanControls() {
+    const charge = this._state('switch', 'charge_allowed');
+    const discharge = this._state('switch', 'discharge_allowed');
+    if (!charge || !discharge) return nothing;
+
+    const chargeOn = charge.state === 'on';
+    const dischargeOn = discharge.state === 'on';
+
+    return html`
+      <div class="plan-controls">
+        <div class="plan-control-toggle">
+          <ha-icon icon="mdi:battery-plus"></ha-icon>
+          <span class="plan-control-label">Charge allowed</span>
+          <ha-switch
+            .checked=${chargeOn}
+            @change=${() => this._toggleSwitch('charge_allowed')}
+          ></ha-switch>
+        </div>
+        <div class="plan-control-toggle">
+          <ha-icon icon="mdi:battery-minus"></ha-icon>
+          <span class="plan-control-label">Discharge allowed</span>
+          <ha-switch
+            .checked=${dischargeOn}
+            @change=${() => this._toggleSwitch('discharge_allowed')}
+          ></ha-switch>
+        </div>
+      </div>
+    `;
+  }
+
   _renderSlider(label, numberKey, unit = '') {
     const obj = this._state('number', numberKey);
     if (!obj) return nothing;
@@ -1557,6 +1587,8 @@ class VictronChargeControllerCard extends LitElement {
           </div>
         </div>
 
+        ${this._renderPlanControls()}
+
         ${todayChart ? html`
           <div class="plan-chart-label">Today <span class="plan-chart-date">${todayDate}</span></div>
           ${todayChart}
@@ -2086,6 +2118,27 @@ class VictronChargeControllerCard extends LitElement {
       .plan-recalc-btn:hover {
         border-color: var(--vcc-accent, #03a9f4);
         color: var(--vcc-accent, #03a9f4);
+      }
+      .plan-controls {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 4px 0 8px;
+        flex-wrap: wrap;
+      }
+      .plan-control-toggle {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.82em;
+        color: var(--vcc-text, #212121);
+      }
+      .plan-control-toggle ha-icon {
+        --mdc-icon-size: 16px;
+        color: var(--vcc-text2, #757575);
+      }
+      .plan-control-label {
+        color: var(--vcc-text, #212121);
       }
 
       /* ── Cost chart ────────────────────────────── */
