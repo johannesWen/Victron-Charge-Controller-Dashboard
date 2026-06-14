@@ -70,12 +70,25 @@ class VictronChargeControllerCard extends LitElement {
     this._costStatsState = { status: 'idle', key: null, points: [], error: null };
     this._tooltipBar = null;
     this._tooltipHideTimer = null;
+    // Manual action picker state
+    this._pickerBar = null;
+    this._pickerHideTimer = null;
+    this._barHoldTimer = null;
+    this._barHoldStart = null;
+    this._barLongPressFired = false;
+    this._onDocumentPointerDownBound = this._onDocumentPointerDown.bind(this);
   }
 
   disconnectedCallback() {
     super.disconnectedCallback();
     this._finishThresholdDrag(false);
     if (this._tooltipHideTimer) clearTimeout(this._tooltipHideTimer);
+    if (this._pickerHideTimer) clearTimeout(this._pickerHideTimer);
+    if (this._barHoldTimer) {
+      clearTimeout(this._barHoldTimer);
+      this._barHoldTimer = null;
+    }
+    document.removeEventListener('pointerdown', this._onDocumentPointerDownBound, true);
   }
 
   // ── Lovelace lifecycle ──────────────────────────────────
@@ -151,6 +164,12 @@ class VictronChargeControllerCard extends LitElement {
     this._callService('button', 'press', {
       entity_id: this._eid('button', key),
     });
+  }
+
+  _setPlanHourAction(hour, action, date) {
+    const data = { hour, action };
+    if (date) data.date = date;
+    this._callService('victron_charge_control', 'set_hour_action', data);
   }
 
   // ── Blocked-hours helpers ───────────────────────────────
@@ -814,7 +833,15 @@ class VictronChargeControllerCard extends LitElement {
           const displayAction = entry.displayAction || entry.action;
           const overlayFill = isPast ? null : blockedOverlayFill(entry);
           return svg`
-            <g class="plan-bar-group" @click=${() => this._onBarClick(chartId, i)}>
+            <g class="plan-bar-group"
+              data-past=${isPast ? 'true' : 'false'}
+              @click=${(e) => this._onBarClick(e, chartId, i)}
+              @contextmenu=${(e) => this._onBarContextMenu(e, chartId, i)}
+              @pointerdown=${(e) => this._onBarPointerDown(e, chartId, i)}
+              @pointermove=${(e) => this._onBarPointerMove(e)}
+              @pointerup=${(e) => this._onBarPointerUp(e)}
+              @pointercancel=${(e) => this._onBarPointerUp(e)}
+              @pointerleave=${(e) => this._onBarPointerUp(e)}>
               <rect
                 x="${x}" y="${barY}" width="${w}" height="${barH}"
                 fill="${isPast ? actionColor('idle') : actionColor(displayAction)}"
@@ -926,15 +953,98 @@ class VictronChargeControllerCard extends LitElement {
             </g>
           `;
         })()}
+
+        <!-- Manual action picker -->
+        ${(() => {
+          if (!this._pickerBar || this._pickerBar.chartId !== chartId) return nothing;
+          const { index } = this._pickerBar;
+          if (index < 0 || index >= enrichedPlan.length) return nothing;
+          const entry = enrichedPlan[index];
+          const price = Number(entry.price);
+          if (!Number.isFinite(price)) return nothing;
+          const h = entry.hour ?? index;
+          const entryDate = entry.date;
+          const barCenterX = padL + index * barW + barW / 2;
+          const barTopY = yPos(price);
+          const barBaseY = zeroInRange ? yPos(0) : padT + plotH;
+          const barTop = Math.min(barTopY, barBaseY);
+          const pw = 168;
+          const ph = 70;
+          let py = barTop - ph - 8;
+          if (py < 2) py = Math.max(barTopY, barBaseY) + 8;
+          let px = barCenterX - pw / 2;
+          px = Math.max(padL, Math.min(px, chartW - padR - pw));
+          const currentAction = entry.displayAction || entry.action || 'idle';
+          const timeLabel = `${String(h).padStart(2, '0')}:00`;
+          const priceLabel = `${price.toFixed(2)} ct/kWh`;
+          const btnW = 48;
+          const btnH = 24;
+          const btnY = py + 30;
+          const gap = 4;
+          const totalBtnW = btnW * 3 + gap * 2;
+          const btnStartX = px + (pw - totalBtnW) / 2;
+          const buttons = [
+            { key: 'charge',    label: 'Charge',    color: 'var(--vcc-success, #4caf50)' },
+            { key: 'discharge', label: 'Disch.',    color: 'var(--vcc-warning, #ff9800)' },
+            { key: 'idle',      label: 'Idle',      color: 'var(--vcc-disabled, #9e9e9e)' },
+          ];
+          return svg`
+            <g class="plan-picker"
+              @contextmenu=${(e) => { e.preventDefault(); e.stopPropagation(); }}
+              @pointerdown=${(e) => e.stopPropagation()}>
+              <rect x="${px}" y="${py}" width="${pw}" height="${ph}" rx="6"
+                class="plan-picker-bg"
+                fill="var(--vcc-card-bg, var(--card-background-color, #fff))"
+                fill-opacity="0.97"
+                stroke="var(--vcc-border, #e0e0e0)" stroke-width="0.8" />
+              <text x="${px + pw / 2}" y="${py + 16}" text-anchor="middle"
+                class="plan-picker-title">${timeLabel} · ${priceLabel}</text>
+              ${buttons.map((b, bi) => {
+                const bx = btnStartX + bi * (btnW + gap);
+                const isActive = currentAction === b.key;
+                return svg`
+                  <g class="plan-picker-btn"
+                    data-action=${b.key}
+                    @click=${(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      this._setPlanHourAction(h, b.key, entryDate);
+                      this._closePicker();
+                    }}>
+                    <rect x="${bx}" y="${btnY}" width="${btnW}" height="${btnH}" rx="4"
+                      fill=${isActive ? b.color : 'transparent'}
+                      stroke=${b.color} stroke-width="1.5"
+                      pointer-events="all" />
+                    <text x="${bx + btnW / 2}" y="${btnY + 16}" text-anchor="middle"
+                      class="plan-picker-label ${isActive ? 'plan-picker-label-active' : ''}">${b.label}</text>
+                  </g>
+                `;
+              })}
+            </g>
+          `;
+        })()}
       </svg>
     `;
   }
 
-  _onBarClick(chartId, index) {
+  _onBarClick(e, chartId, index) {
+    if (this._barLongPressFired) {
+      this._barLongPressFired = false;
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
     if (this._tooltipBar?.chartId === chartId && this._tooltipBar?.index === index) {
+      this._tooltipBar = null;
+      if (this._tooltipHideTimer) {
+        clearTimeout(this._tooltipHideTimer);
+        this._tooltipHideTimer = null;
+      }
+      this.requestUpdate();
       return;
     }
     this._tooltipBar = { chartId, index };
+    if (this._pickerBar) this._closePicker();
     if (this._tooltipHideTimer) clearTimeout(this._tooltipHideTimer);
     this._tooltipHideTimer = setTimeout(() => {
       this._tooltipBar = null;
@@ -942,6 +1052,101 @@ class VictronChargeControllerCard extends LitElement {
       this.requestUpdate();
     }, 10000);
     this.requestUpdate();
+  }
+
+  _onBarContextMenu(e, chartId, index) {
+    e.preventDefault();
+    e.stopPropagation();
+    const group = e.currentTarget;
+    if (group?.dataset?.past === 'true') return;
+    this._openPicker(chartId, index);
+  }
+
+  _onBarPointerDown(e, chartId, index) {
+    if (e.button !== undefined && e.button !== 0) return;
+    const group = e.currentTarget;
+    if (group?.dataset?.past === 'true') return;
+    this._barLongPressFired = false;
+    if (this._barHoldTimer) clearTimeout(this._barHoldTimer);
+    this._barHoldStart = { x: e.clientX, y: e.clientY };
+    this._barHoldTimer = setTimeout(() => {
+      this._barHoldTimer = null;
+      this._barLongPressFired = true;
+      this._openPicker(chartId, index);
+    }, 500);
+  }
+
+  _onBarPointerUp(e) {
+    if (this._barHoldTimer) {
+      clearTimeout(this._barHoldTimer);
+      this._barHoldTimer = null;
+    }
+    this._barHoldStart = null;
+  }
+
+  _onBarPointerMove(e) {
+    if (!this._barHoldStart || !this._barHoldTimer) return;
+    const dx = e.clientX - this._barHoldStart.x;
+    const dy = e.clientY - this._barHoldStart.y;
+    if (dx * dx + dy * dy > 36) {
+      clearTimeout(this._barHoldTimer);
+      this._barHoldTimer = null;
+      this._barHoldStart = null;
+    }
+  }
+
+  _onBarPointerMove(e) {
+    if (!this._barHoldStart || !this._barHoldTimer) return;
+    const dx = e.clientX - this._barHoldStart.x;
+    const dy = e.clientY - this._barHoldStart.y;
+    if (dx * dx + dy * dy > 36) {
+      clearTimeout(this._barHoldTimer);
+      this._barHoldTimer = null;
+      this._barHoldStart = null;
+    }
+  }
+
+  _openPicker(chartId, index) {
+    this._pickerBar = { chartId, index };
+    if (this._tooltipBar) {
+      this._tooltipBar = null;
+      if (this._tooltipHideTimer) {
+        clearTimeout(this._tooltipHideTimer);
+        this._tooltipHideTimer = null;
+      }
+    }
+    if (this._pickerHideTimer) clearTimeout(this._pickerHideTimer);
+    this._pickerHideTimer = setTimeout(() => {
+      this._pickerBar = null;
+      this._pickerHideTimer = null;
+      this.requestUpdate();
+    }, 15000);
+    document.addEventListener('pointerdown', this._onDocumentPointerDownBound, true);
+    this.requestUpdate();
+  }
+
+  _closePicker() {
+    this._pickerBar = null;
+    if (this._pickerHideTimer) {
+      clearTimeout(this._pickerHideTimer);
+      this._pickerHideTimer = null;
+    }
+    document.removeEventListener('pointerdown', this._onDocumentPointerDownBound, true);
+    this.requestUpdate();
+  }
+
+  _onDocumentPointerDown(e) {
+    if (!this._pickerBar) {
+      document.removeEventListener('pointerdown', this._onDocumentPointerDownBound, true);
+      return;
+    }
+    const path = e.composedPath ? e.composedPath() : (e.path || []);
+    // Picker itself: keep open, let click handlers inside run
+    if (path.some(n => n && n.classList && n.classList.contains('plan-picker'))) {
+      return;
+    }
+    // Click on a different bar: close current picker; the bar handler will open a new one
+    this._closePicker();
   }
 
   // ── Cost statistics view ─────────────────────────────────
@@ -2017,6 +2222,31 @@ class VictronChargeControllerCard extends LitElement {
       }
       .plan-bar-group {
         cursor: pointer;
+      }
+      .plan-bar-group[data-past="true"] {
+        cursor: default;
+      }
+      .plan-picker-bg {
+        filter: drop-shadow(0 1px 2px rgba(0,0,0,0.15));
+      }
+      .plan-picker-title {
+        font-size: 12px;
+        font-weight: 600;
+        fill: var(--vcc-text, #212121);
+        pointer-events: none;
+        user-select: none;
+      }
+      .plan-picker-btn { cursor: pointer; }
+      .plan-picker-btn:hover rect { opacity: 0.85; }
+      .plan-picker-label {
+        font-size: 11px;
+        font-weight: 600;
+        fill: var(--vcc-text, #212121);
+        pointer-events: none;
+        user-select: none;
+      }
+      .plan-picker-label-active {
+        fill: #fff;
       }
       .plan-bar-tooltip .plan-tooltip-time {
         font-size: 16px;
