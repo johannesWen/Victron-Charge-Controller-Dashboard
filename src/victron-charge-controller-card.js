@@ -2352,9 +2352,9 @@ class VictronChargeControllerCard extends LitElement {
       .plan-controls {
         display: flex;
         align-items: center;
-        gap: 16px;
+        gap: 12px;
         padding: 4px 0 8px;
-        flex-wrap: wrap;
+        flex-wrap: nowrap;
       }
       .plan-control-toggle {
         display: flex;
@@ -2362,6 +2362,8 @@ class VictronChargeControllerCard extends LitElement {
         gap: 6px;
         font-size: 0.82em;
         color: var(--vcc-text, #212121);
+        white-space: nowrap;
+        flex: 0 0 auto;
       }
       .plan-control-toggle ha-icon {
         --mdc-icon-size: 16px;
