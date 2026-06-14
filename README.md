@@ -45,6 +45,7 @@ A custom [Home Assistant](https://www.home-assistant.io/) Lovelace dashboard car
 - **Auto mode tuning** — Cheapest/expensive hours, price thresholds for charge and discharge
 - **Grid feed-in control** — Enable/disable feed-in, set price threshold and power limits
 - **Blocked hours** — Visual hour-chip grid to block charging or discharging during specific hours
+- **Manual bar selection** — Right-click (or long-press) any future hour on the plan chart to set it to Charge, Discharge, or Idle, and add it to the active plan
 - **Cost / revenue chart** — Plot grid energy cost and revenue from Home Assistant long-term statistics
 - **Action buttons** — Recalculate schedule or clear the current schedule
 - **Visual editor** — Choose the card view directly from the Lovelace UI
