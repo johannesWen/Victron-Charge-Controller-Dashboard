@@ -1,36 +1,44 @@
-<p align="left">
-    <img src="https://github.com/johannesWen/Victron-Charge-Controller/blob/main/custom_components/victron_charge_control/brand/icon.png" height="100" alt="Victron Charge Controller logo">
+<p align="center">
+  <img src="https://raw.githubusercontent.com/johannesWen/Victron-Charge-Controller/main/custom_components/victron_charge_control/brand/icon.png" height="104" alt="Victron Charge Controller logo">
 </p>
 
-# Victron Charge Controller Card
+<h1 align="center">Victron Charge Controller Dashboard</h1>
 
-[![hacs][hacs-badge]][hacs-url]
-[![release][release-badge]][release-url]
-[![license][license-badge]][license-url]
+<p align="center">
+  <strong>A polished Home Assistant Lovelace card for monitoring and steering Victron ESS charge control.</strong>
+</p>
 
-A custom [Home Assistant](https://www.home-assistant.io/) Lovelace dashboard card for controlling and monitoring a Victron ESS system via the [Victron Charge Controller](https://github.com/johannesWen/Victron-Charge-Controller) integration.
+<p align="center">
+  <a href="https://github.com/hacs/integration"><img src="https://img.shields.io/badge/HACS-Custom-41BDF5?style=flat-square" alt="HACS custom repository"></a>
+  <a href="https://github.com/johannesWen/Victron-Charge-Controller-Dashboard/releases"><img src="https://img.shields.io/github/v/release/johannesWen/Victron-Charge-Controller-Dashboard?style=flat-square" alt="Latest release"></a>
+  <a href="https://github.com/johannesWen/Victron-Charge-Controller-Dashboard/releases"><img src="https://img.shields.io/github/release-date/johannesWen/Victron-Charge-Controller-Dashboard?style=flat-square" alt="Release date"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/johannesWen/Victron-Charge-Controller-Dashboard?style=flat-square" alt="License"></a>
+  <img src="https://img.shields.io/badge/Home%20Assistant-Lovelace-18BCF2?style=flat-square" alt="Home Assistant Lovelace">
+</p>
 
-| Settings Card | Plan Card |
-|:---:|:---:|
-| <a href="assets/screenshots/settings_card.png"><img src="https://raw.githubusercontent.com/johannesWen/Victron-Charge-Controller-Dashboard/main/assets/screenshots/settings_card.png" width="400"></a> | <a href="assets/screenshots/plan_card.png"><img src="https://raw.githubusercontent.com/johannesWen/Victron-Charge-Controller-Dashboard/refs/heads/main/assets/screenshots/plan_card.png" width="400"></a> |
-| **History Card** | |
-| <a href="assets/screenshots/costs_card.png"><img src="https://raw.githubusercontent.com/johannesWen/Victron-Charge-Controller-Dashboard/refs/heads/main/assets/screenshots/costs_card.png" width="400"></a> | |
+The Victron Charge Controller Dashboard is a custom Lovelace card for the
+[Victron Charge Controller](https://github.com/johannesWen/Victron-Charge-Controller)
+Home Assistant integration. It gives you a compact control surface for charge modes,
+SOC limits, grid setpoints, EPEX Spot based scheduling, manual hour overrides, and
+energy cost/revenue history.
 
-<!-- Badges -->
-[hacs-badge]: https://img.shields.io/badge/HACS-CUSTOM-41BDF5?style=flat-square
-[hacs-url]: https://github.com/hacs/integration
-[release-badge]: https://img.shields.io/github/v/release/johannesWen/Victron-Charge-Controller-Dashboard?style=flat-square
-[release-url]: https://github.com/johannesWen/Victron-Charge-Controller-Dashboard/releases
-[license-badge]: https://img.shields.io/github/license/johannesWen/Victron-Charge-Controller-Dashboard?style=flat-square
-[license-url]: LICENSE
+## Preview
 
-<!-- Table of Contents -->
-## Table of Contents
+| Settings | Plan |
+| :---: | :---: |
+| <a href="assets/screenshots/settings_card.png"><img src="https://raw.githubusercontent.com/johannesWen/Victron-Charge-Controller-Dashboard/main/assets/screenshots/settings_card.png" width="420" alt="Settings card screenshot"></a> | <a href="assets/screenshots/plan_card.png"><img src="https://raw.githubusercontent.com/johannesWen/Victron-Charge-Controller-Dashboard/main/assets/screenshots/plan_card.png" width="420" alt="Plan card screenshot"></a> |
+
+| History |
+| :---: |
+| <a href="assets/screenshots/costs_card.png"><img src="https://raw.githubusercontent.com/johannesWen/Victron-Charge-Controller-Dashboard/main/assets/screenshots/costs_card.png" width="420" alt="History card screenshot"></a> |
+
+## Contents
 
 - [Features](#features)
-- [Prerequisites](#prerequisites)
+- [Requirements](#requirements)
 - [Installation](#installation)
-- [Configuration](#configuration)
+- [Card Configuration](#card-configuration)
+- [Views](#views)
 - [Troubleshooting](#troubleshooting)
 - [Development](#development)
 - [Contributing](#contributing)
@@ -38,39 +46,48 @@ A custom [Home Assistant](https://www.home-assistant.io/) Lovelace dashboard car
 
 ## Features
 
-- **Mode selection** — Switch between Off, Auto, Manual, Force Charge, and Force Discharge
-- **Charge / Discharge control** — Toggle charging and discharging, adjust power setpoints
-- **Battery limits** — Set minimum and maximum SOC
-- **Grid settings** — Configure idle, min, and max grid setpoints
-- **Auto mode tuning** — Cheapest/expensive hours, price thresholds for charge and discharge
-- **Grid feed-in control** — Enable/disable feed-in, set price threshold and power limits
-- **Blocked hours** — Visual hour-chip grid to block charging or discharging during specific hours
-- **Manual bar selection** — Right-click (or long-press) any future hour on the plan chart to set it to Charge, Discharge, or Idle, and add it to the active plan
-- **Cost / revenue chart** — Plot grid energy cost and revenue from Home Assistant long-term statistics
-- **Action buttons** — Recalculate schedule or clear the current schedule
-- **Visual editor** — Choose the card view directly from the Lovelace UI
+- **Three focused views** for settings, schedule planning, and historical cost/energy charts.
+- **Mode control** for `off`, `auto`, `manual`, `force_charge`, and `force_discharge`.
+- **Runtime tuning** for charge/discharge power, SOC boundaries, grid limits, idle setpoint, and EPEX Spot price thresholds.
+- **Grid feed-in control** with configurable default/reduced feed-in limits and price trigger.
+- **Interactive schedule chart** showing today and tomorrow, current hour, price thresholds, blocked hours, and planned charge/discharge periods.
+- **Manual hour overrides** by right-clicking or long-pressing future plan bars.
+- **Cost and revenue history** using Home Assistant long-term statistics for grid import/export and calculated EUR totals.
+- **Visual Lovelace editor** for selecting the card view and entity prefix without YAML editing.
 
-## Prerequisites
+## Requirements
 
-This card requires the **Victron Charge Controller** custom integration to be installed and configured in Home Assistant:
+This frontend card depends on the backend integration:
 
-[https://github.com/johannesWen/Victron-Charge-Controller](https://github.com/johannesWen/Victron-Charge-Controller)
+- [Victron Charge Controller](https://github.com/johannesWen/Victron-Charge-Controller)
+- Home Assistant with Lovelace custom cards enabled
+- HACS for the recommended installation path, or manual resource registration
+
+The default entity prefix is `victron_charge_control`, matching the backend integration's generated entities.
 
 ## Installation
 
-### HACS (recommended)
+### HACS
 
-1. Open **HACS** in Home Assistant
-2. Go to **Frontend** → click the three-dot menu → **Custom repositories**
-3. Add `https://github.com/johannesWen/Victron-Charge-Controller-Dashboard` with category **Dashboard**
-4. Search for **Victron Charge Controller Card** and install it
-5. Reload your browser
+1. Open **HACS** in Home Assistant.
+2. Go to **Frontend**.
+3. Open the three-dot menu and select **Custom repositories**.
+4. Add this repository URL:
+
+   ```text
+   https://github.com/johannesWen/Victron-Charge-Controller-Dashboard
+   ```
+
+5. Select category **Dashboard**.
+6. Install **Victron Charge Controller Card**.
+7. Reload the browser or clear the frontend cache.
 
 ### Manual
 
-1. Download `victron-charge-controller-card.js` from the [latest release](https://github.com/johannesWen/Victron-Charge-Controller-Dashboard/releases)
-2. Copy it to your Home Assistant `config/www/` directory
-3. Add the resource in **Settings → Dashboards → Resources** (or in your Lovelace YAML config):
+1. Download `victron-charge-controller-card.js` from the
+   [latest release](https://github.com/johannesWen/Victron-Charge-Controller-Dashboard/releases).
+2. Copy the file into your Home Assistant `config/www/` directory.
+3. Add it as a dashboard resource:
 
    ```yaml
    resources:
@@ -78,16 +95,18 @@ This card requires the **Victron Charge Controller** custom integration to be in
        type: module
    ```
 
-4. Reload your browser
+4. Reload the browser.
 
-## Configuration
+## Card Configuration
 
-Add the card to your dashboard via the UI editor or YAML.
+Add the card from the Lovelace UI or configure it directly in YAML.
 
-### UI Editor
+### UI
 
-1. Edit your dashboard → **Add Card** → search for **Victron Charge Controller**
-2. Choose the Settings, Plan, or History view in the visual editor
+1. Edit your dashboard.
+2. Select **Add Card**.
+3. Search for **Victron Charge Controller**.
+4. Choose the desired view in the visual editor.
 
 ### YAML
 
@@ -98,61 +117,64 @@ entity_prefix: victron_charge_control
 view: settings
 ```
 
-| Option          | Type   | Default                    | Description                                        |
-| --------------- | ------ | -------------------------- | -------------------------------------------------- |
-| `title`         | string | `Victron Charge Control`   | Card title displayed in the header                 |
-| `entity_prefix` | string | `victron_charge_control`   | Common prefix of all entity IDs from the integration |
-| `view`          | string | `settings`                 | Card view: `settings`, `plan`, or `history`         |
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `title` | string | `Victron Charge Control` | Card title shown in the header. |
+| `entity_prefix` | string | `victron_charge_control` | Prefix used by the backend integration entities. |
+| `view` | string | `settings` | Card view: `settings`, `plan`, or `history`. |
+
+## Views
+
+| View | Purpose |
+| --- | --- |
+| `settings` | Operate the controller, adjust limits, configure price thresholds, tune grid feed-in behavior, and recalculate schedules. |
+| `plan` | Inspect the EPEX Spot based plan for today and tomorrow, view blocked hours, and set manual actions for future hours. |
+| `history` | Review grid cost, revenue, import, and export statistics by day, week, month, or year. |
 
 ## Troubleshooting
 
-| Issue | Solution |
-| ----- | -------- |
-| Card not showing in the Add Card dialog | Clear your browser cache or do a hard refresh (`Ctrl+Shift+R` / `Cmd+Shift+R`) |
-| Entities not found | Verify the `entity_prefix` matches your integration setup. Check that the [Victron Charge Controller](https://github.com/johannesWen/Victron-Charge-Controller) integration is installed and configured |
-| Card shows "Custom element doesn't exist" | Ensure the resource URL is correct in **Settings → Dashboards → Resources** and ends with `.js` |
-| History chart is empty | The History view relies on Home Assistant long-term statistics. Make sure the recorder is enabled and has collected data for your energy sensors |
+| Issue | Resolution |
+| --- | --- |
+| Card is not available in the Add Card dialog | Hard-refresh the browser (`Ctrl+Shift+R` / `Cmd+Shift+R`) and confirm the HACS frontend resource was added. |
+| `Custom element doesn't exist` | Verify the resource URL points to `victron-charge-controller-card.js` and uses `type: module`. |
+| Entities are missing | Confirm the backend integration is installed and that `entity_prefix` matches your entity IDs. |
+| Plan view is empty | Recalculate the schedule in the backend integration and confirm the EPEX Spot sensor exposes price data. |
+| History view is empty | Confirm Home Assistant recorder statistics are enabled for the cost/revenue or import/export sensors. |
 
 ## Development
 
-### Building from source
+Install dependencies and build the bundled card:
 
 ```bash
-# Install dependencies
 npm install
-
-# Build the bundled card
 npm run build
+```
 
-# Watch for changes during development
+Useful development commands:
+
+```bash
 npm run watch
-
-# Run the live development server
 npm run serve
 ```
 
-The output is written to `dist/victron-charge-controller-card.js`.
+The build output is written to `dist/victron-charge-controller-card.js`.
 
-### Testing in Home Assistant (Docker)
+### Local Home Assistant
 
-A `docker-compose.yml` is included that spins up a full Home Assistant instance with the card and the backend integration pre-loaded, along with dummy sensors so no real hardware is needed.
+This repository includes a Docker Compose setup for testing the frontend with the backend integration and dummy entities.
 
 ```bash
-# 1. Build the card
 npm run build
-
-# 2. Start the dev container
 docker compose up -d
-
-# 3. Open Home Assistant
-#    http://localhost:8123
 ```
 
-On first launch, complete the HA onboarding wizard. The Lovelace dashboard at **Overview** will already contain the card and helper controls to adjust dummy sensor values (Battery SOC, Grid Setpoint, EPEX Spot Price).
+Then open Home Assistant at:
 
-To iterate on the card, rebuild with `npm run build` and hard-refresh the browser (`Ctrl+Shift+R`).
+```text
+http://localhost:8123
+```
 
-Stop the container with:
+Stop the development stack with:
 
 ```bash
 docker compose down
@@ -160,14 +182,14 @@ docker compose down
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request. For major changes, please open an issue first to discuss what you would like to change.
+Contributions are welcome. Please open an issue for larger changes before investing significant work.
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+1. Fork the repository.
+2. Create a feature branch.
+3. Commit your changes.
+4. Push the branch.
+5. Open a pull request.
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE).
+Licensed under the [MIT License](LICENSE).
