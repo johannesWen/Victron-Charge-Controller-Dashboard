@@ -73,6 +73,15 @@ input_number:
     initial: 30
     icon: mdi:history
 
+  solar_surplus_peak:
+    name: "Solar Surplus Peak"
+    min: 0
+    max: 15000
+    step: 100
+    initial: 4000
+    unit_of_measurement: "W"
+    icon: mdi:solar-power
+
 # ---------------------------------------------------------------
 # Template entities
 # ---------------------------------------------------------------
@@ -208,6 +217,30 @@ template:
               {% set ns.entries = ns.entries + [{"start_time": start.isoformat(), "end_time": end.isoformat(), "price_per_kwh": prices_tomorrow[h]}] %}
             {% endfor %}
             {{ ns.entries }}
+
+      # Simulated solar surplus sensor used by the optional
+      # solar_surplus_entity input of the Victron Charge Control integration.
+      # A 24-hour bell curve peaking at 13:00, scaled by
+      # input_number.solar_surplus_peak. A constant house load of 500 W
+      # is subtracted so the value goes negative at night.
+      # Two sine terms are layered on top to mimic cloud cover and produce
+      # a fresh value every minute, so the 15-min sliding mean of the
+      # integration is actually exercised.
+      - name: "Solar Surplus"
+        unique_id: dummy_solar_surplus
+        unit_of_measurement: "W"
+        device_class: power
+        state_class: measurement
+        state: >-
+          {% set profile = [0,0,0,0,0,0,0.05,0.18,0.42,0.68,0.88,0.97,1.00,0.97,0.88,0.68,0.42,0.18,0.05,0,0,0,0,0] %}
+          {% set house_load = 500 %}
+          {% set peak = states('input_number.solar_surplus_peak') | float(4000) %}
+          {% set h = now().hour %}
+          {% set minute_of_day = h * 60 + now().minute + now().second / 60.0 %}
+          {% set pv = profile[h] * peak %}
+          {% set noise = (sin(minute_of_day / 11.0) * 0.25 + sin(minute_of_day / 4.7 + 1) * 0.15) * pv %}
+          {{ (pv - house_load + noise) | round(0) }}
+        icon: mdi:solar-power
 
 # ---------------------------------------------------------------
 # Automations / scripts / scenes (required files)
