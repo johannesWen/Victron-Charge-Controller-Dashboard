@@ -245,6 +245,10 @@ class VictronChargeControllerCard extends LitElement {
     const key = type === 'charging'
       ? 'blocked_charging_hours'
       : 'blocked_discharging_hours';
+    this._toggleHour(key, hour);
+  }
+
+  _toggleHour(key, hour) {
     const current = this._parseHours(this._val('text', key));
     const updated = current.includes(hour)
       ? current.filter(h => h !== hour)
@@ -595,17 +599,15 @@ class VictronChargeControllerCard extends LitElement {
     this._finishThresholdDrag(true);
   }
 
-  _renderHourChips(type) {
-    const key = type === 'charging'
-      ? 'blocked_charging_hours'
-      : 'blocked_discharging_hours';
-    const blocked = this._parseHours(this._val('text', key));
+  _renderHourChips({ key, activeClass = 'blocked', onClick }) {
+    const selected = this._parseHours(this._val('text', key));
+    const toggle = onClick ?? (h => this._toggleHour(key, h));
     return html`
       <div class="hour-grid">
         ${HOURS.map(h => html`
           <button
-            class="hour-chip ${blocked.includes(h) ? 'blocked' : ''}"
-            @click=${() => this._toggleBlockedHour(type, h)}
+            class="hour-chip ${selected.includes(h) ? activeClass : ''}"
+            @click=${() => toggle(h)}
           >${String(h).padStart(2, '0')}</button>
         `)}
       </div>`;
@@ -700,11 +702,19 @@ class VictronChargeControllerCard extends LitElement {
       ${this._renderSection('Blocked Hours', 'mdi:clock-alert', html`
         <div class="blocked-group">
           <span class="blocked-label">Charging</span>
-          ${this._renderHourChips('charging')}
+          ${this._renderHourChips({ key: 'blocked_charging_hours', activeClass: 'blocked', onClick: h => this._toggleBlockedHour('charging', h) })}
         </div>
         <div class="blocked-group">
           <span class="blocked-label">Discharging</span>
-          ${this._renderHourChips('discharging')}
+          ${this._renderHourChips({ key: 'blocked_discharging_hours', activeClass: 'blocked', onClick: h => this._toggleBlockedHour('discharging', h) })}
+        </div>
+      `)}
+
+      <!-- Replan Hours -->
+      ${this._renderSection('Replan Hours', 'mdi:calendar-refresh', html`
+        <div class="blocked-group">
+          <span class="blocked-label">Recalculation Hours</span>
+          ${this._renderHourChips({ key: 'replan_hours', activeClass: 'replan' })}
         </div>
       `)}
 
@@ -2140,6 +2150,10 @@ class VictronChargeControllerCard extends LitElement {
       .hour-chip.blocked {
         background: rgba(244,67,54,0.12); border-color: var(--vcc-error);
         color: var(--vcc-error); font-weight: 600;
+      }
+      .hour-chip.replan {
+        background: rgba(33,150,243,0.12); border-color: var(--vcc-info);
+        color: var(--vcc-info); font-weight: 600;
       }
       @media (max-width: 350px) {
         .hour-grid { grid-template-columns: repeat(8, 1fr); }
