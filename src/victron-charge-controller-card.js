@@ -781,7 +781,7 @@ class VictronChargeControllerCard extends LitElement {
       switch (action) {
         case 'charge':              return 'var(--vcc-success, #4caf50)';
         case 'pv_charge':           return 'var(--vcc-pv-charge, #ffb74d)';
-        case 'discharge':           return 'var(--vcc-warning, #ff9800)';
+        case 'discharge':           return '#ff6600';
         case 'blocked':             return 'var(--vcc-blocked-both, #f44336)';
         default:                    return 'var(--vcc-disabled, #bdbdbd)';
       }
@@ -873,7 +873,7 @@ class VictronChargeControllerCard extends LitElement {
                 <!-- PV Charge background column (light orange) -->
                 <rect class="plan-pv-column"
                   x="${colX}" y="${padT}" width="${colW}" height="${plotH}"
-                  fill="var(--vcc-pv-charge, #ffb74d)" opacity="0.22" rx="1.5"
+                  fill="var(--vcc-pv-charge, #ffb74d)" opacity="0.10" rx="1.5"
                   pointer-events="none" />
               ` : nothing}
               <rect
@@ -931,9 +931,9 @@ class VictronChargeControllerCard extends LitElement {
             <line x1="${padL}" y1="${yPos(dischargeThreshold)}" x2="${chartW - padR}" y2="${yPos(dischargeThreshold)}"
               stroke="transparent" stroke-width="22" class="threshold-hit-area" />
             <line x1="${padL}" y1="${yPos(dischargeThreshold)}" x2="${chartW - padR}" y2="${yPos(dischargeThreshold)}"
-              stroke="var(--vcc-warning, #ff9800)" stroke-width="1.5" stroke-dasharray="6,4" class="threshold-visible-line" />
+              stroke="#ff6600" stroke-width="1.5" stroke-dasharray="6,4" class="threshold-visible-line" />
             <text x="${chartW - padR + 4}" y="${yPos(dischargeThreshold) + 3.5}" text-anchor="start"
-              class="plan-threshold-label" fill="var(--vcc-warning, #ff9800)">${Math.round(dischargeThreshold * 10) / 10}</text>
+              class="plan-threshold-label" fill="var(--vcc-warning, #ff6600)">${Math.round(dischargeThreshold * 10) / 10}</text>
           </g>`;
         })() : nothing}
 
@@ -1008,7 +1008,7 @@ class VictronChargeControllerCard extends LitElement {
           const buttons = [
             { key: 'charge',    label: 'Charge',  color: 'var(--vcc-success, #4caf50)' },
             { key: 'pv_charge', label: 'PV',      color: 'var(--vcc-pv-charge, #ffb74d)' },
-            { key: 'discharge', label: 'Disch.',  color: 'var(--vcc-warning, #ff9800)' },
+            { key: 'discharge', label: 'Disch.',  color: '#ff6600' },
             { key: 'idle',      label: 'Idle',    color: 'var(--vcc-disabled, #9e9e9e)' },
           ];
           const btnW = 40;
@@ -1960,7 +1960,7 @@ class VictronChargeControllerCard extends LitElement {
         --vcc-text:     var(--primary-text-color, #212121);
         --vcc-text2:    var(--secondary-text-color, #757575);
         --vcc-success:  var(--success-color, #4caf50);
-        --vcc-warning:  var(--warning-color, #ff9800);
+        --vcc-warning:  #ff6600;
         --vcc-error:    var(--error-color, #f44336);
         --vcc-info:     var(--info-color, #2196f3);
         --vcc-disabled: var(--disabled-color, #bdbdbd);
