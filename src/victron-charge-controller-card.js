@@ -22,6 +22,7 @@ const MODE_META = {
 const ACTION_META = {
   idle:      { icon: 'mdi:pause-circle-outline', label: 'Idle' },
   charge:    { icon: 'mdi:battery-charging',     label: 'Charging' },
+  pv_charge: { icon: 'mdi:solar-power-variant',  label: 'PV Charging' },
   discharge: { icon: 'mdi:battery-arrow-down',   label: 'Discharging' },
 };
 
@@ -206,14 +207,15 @@ class VictronChargeControllerCard extends LitElement {
   }
 
   _normalizePlanAction(action) {
-    if (action === 'charge' || action === 'discharge' || action === 'blocked') return action;
+    if (action === 'charge' || action === 'pv_charge' || action === 'discharge' || action === 'blocked') return action;
     return 'idle';
   }
 
   _enrichPlanDisplayState(plan) {
     const chargeSlots = this._parseScheduleSlots(this._val('sensor', 'charge_hours'));
     const dischargeSlots = this._parseScheduleSlots(this._val('sensor', 'discharge_hours'));
-    const hasScheduleSensors = chargeSlots !== null && dischargeSlots !== null;
+    const pvChargeSlots = this._parseScheduleSlots(this._val('sensor', 'pv_charge_hours'));
+    const hasScheduleSensors = chargeSlots !== null && dischargeSlots !== null && pvChargeSlots !== null;
     const blockedChargingHours = this._parseHours(this._val('text', 'blocked_charging_hours'));
     const blockedDischargingHours = this._parseHours(this._val('text', 'blocked_discharging_hours'));
 
@@ -227,7 +229,10 @@ class VictronChargeControllerCard extends LitElement {
       if (blockedCharging && blockedDischarging) {
         displayAction = 'blocked';
       } else if (hasScheduleSensors && slotKey) {
-        if (chargeSlots.has(slotKey) && !blockedCharging) displayAction = 'charge';
+        // PV charge takes precedence over plain charge/discharge (matches backend),
+        // and is suppressed by a charging block just like charge.
+        if (pvChargeSlots.has(slotKey) && !blockedCharging) displayAction = 'pv_charge';
+        else if (chargeSlots.has(slotKey) && !blockedCharging) displayAction = 'charge';
         else if (dischargeSlots.has(slotKey) && !blockedDischarging) displayAction = 'discharge';
         else displayAction = 'idle';
       }
@@ -775,6 +780,7 @@ class VictronChargeControllerCard extends LitElement {
     const actionColor = (action) => {
       switch (action) {
         case 'charge':              return 'var(--vcc-success, #4caf50)';
+        case 'pv_charge':           return 'var(--vcc-pv-charge, #ffb74d)';
         case 'discharge':           return 'var(--vcc-warning, #ff9800)';
         case 'blocked':             return 'var(--vcc-blocked-both, #f44336)';
         default:                    return 'var(--vcc-disabled, #bdbdbd)';
@@ -834,6 +840,8 @@ class VictronChargeControllerCard extends LitElement {
           const h = entry.hour ?? i;
           const x = padL + i * barW + barGap / 2;
           const w = barW - barGap;
+          const colX = padL + i * barW;
+          const colW = barW;
           const barTop = yPos(price);
           const barBase = zeroInRange ? yPos(0) : padT + plotH;
           const barY = Math.min(barTop, barBase);
@@ -842,6 +850,10 @@ class VictronChargeControllerCard extends LitElement {
           const isCurrent = showCurrentHour && h === currentHour;
           const displayAction = entry.displayAction || entry.action;
           const overlayFill = isPast ? null : blockedOverlayFill(entry);
+          const isPvCharge = !isPast && displayAction === 'pv_charge';
+          // Price bar stays grey on PV-charge hours; the light-orange background
+          // column is the PV indicator (avoids confusion with the orange discharge bar).
+          const barFillColor = isPast ? actionColor('idle') : (isPvCharge ? actionColor('idle') : actionColor(displayAction));
           return svg`
             <g class="plan-bar-group"
               data-past=${isPast ? 'true' : 'false'}
@@ -852,9 +864,21 @@ class VictronChargeControllerCard extends LitElement {
               @pointerup=${(e) => this._onBarPointerUp(e)}
               @pointercancel=${(e) => this._onBarPointerUp(e)}
               @pointerleave=${(e) => this._onBarPointerUp(e)}>
+              <!-- Full-column transparent hit target so the whole time slot is
+                   long-pressable/clickable even when the price bar is near zero. -->
+              <rect class="plan-bar-hit"
+                x="${colX}" y="${padT}" width="${colW}" height="${plotH}"
+                fill="transparent" pointer-events="all" />
+              ${isPvCharge ? svg`
+                <!-- PV Charge background column (light orange) -->
+                <rect class="plan-pv-column"
+                  x="${colX}" y="${padT}" width="${colW}" height="${plotH}"
+                  fill="var(--vcc-pv-charge, #ffb74d)" opacity="0.22" rx="1.5"
+                  pointer-events="none" />
+              ` : nothing}
               <rect
                 x="${x}" y="${barY}" width="${w}" height="${barH}"
-                fill="${isPast ? actionColor('idle') : actionColor(displayAction)}"
+                fill="${barFillColor}"
                 opacity="${isPast ? 0.35 : (isCurrent ? 1 : 0.7)}"
                 rx="1.5"
               />
@@ -978,26 +1002,27 @@ class VictronChargeControllerCard extends LitElement {
           const barTopY = yPos(price);
           const barBaseY = zeroInRange ? yPos(0) : padT + plotH;
           const barTop = Math.min(barTopY, barBaseY);
-          const pw = 168;
+          const currentAction = entry.displayAction || entry.action || 'idle';
+          const timeLabel = `${String(h).padStart(2, '0')}:00`;
+          const priceLabel = `${price.toFixed(2)} ct/kWh`;
+          const buttons = [
+            { key: 'charge',    label: 'Charge',  color: 'var(--vcc-success, #4caf50)' },
+            { key: 'pv_charge', label: 'PV',      color: 'var(--vcc-pv-charge, #ffb74d)' },
+            { key: 'discharge', label: 'Disch.',  color: 'var(--vcc-warning, #ff9800)' },
+            { key: 'idle',      label: 'Idle',    color: 'var(--vcc-disabled, #9e9e9e)' },
+          ];
+          const btnW = 40;
+          const btnH = 24;
+          const gap = 4;
+          const totalBtnW = btnW * buttons.length + gap * (buttons.length - 1);
+          const pw = Math.max(168, totalBtnW + 16);
           const ph = 70;
           let py = barTop - ph - 8;
           if (py < 2) py = Math.max(barTopY, barBaseY) + 8;
           let px = barCenterX - pw / 2;
           px = Math.max(padL, Math.min(px, chartW - padR - pw));
-          const currentAction = entry.displayAction || entry.action || 'idle';
-          const timeLabel = `${String(h).padStart(2, '0')}:00`;
-          const priceLabel = `${price.toFixed(2)} ct/kWh`;
-          const btnW = 48;
-          const btnH = 24;
           const btnY = py + 30;
-          const gap = 4;
-          const totalBtnW = btnW * 3 + gap * 2;
           const btnStartX = px + (pw - totalBtnW) / 2;
-          const buttons = [
-            { key: 'charge',    label: 'Charge',    color: 'var(--vcc-success, #4caf50)' },
-            { key: 'discharge', label: 'Disch.',    color: 'var(--vcc-warning, #ff9800)' },
-            { key: 'idle',      label: 'Idle',      color: 'var(--vcc-disabled, #9e9e9e)' },
-          ];
           return svg`
             <g class="plan-picker"
               @contextmenu=${(e) => { e.preventDefault(); e.stopPropagation(); }}
@@ -1831,6 +1856,10 @@ class VictronChargeControllerCard extends LitElement {
             <span>Idle</span>
           </div>
           <div class="plan-legend-item">
+            <span class="plan-legend-dot" style="background: var(--vcc-pv-charge); opacity: 0.5"></span>
+            <span>PV Charge</span>
+          </div>
+          <div class="plan-legend-item">
             <span class="plan-legend-dot plan-legend-dot-hatched" style="--legend-base: var(--vcc-success); --legend-hatch: var(--vcc-blocked-discharging)"></span>
             <span>Charge + Blocked Discharge</span>
           </div>
@@ -1938,6 +1967,7 @@ class VictronChargeControllerCard extends LitElement {
         --vcc-blocked-charging:    var(--success-color, #2e7d32);
         --vcc-blocked-discharging: var(--warning-color, #ef6c00);
         --vcc-blocked-both:        var(--error-color, #f44336);
+        --vcc-pv-charge:           #ffb74d;
       }
       ha-card { overflow: hidden; }
 
@@ -1964,6 +1994,7 @@ class VictronChargeControllerCard extends LitElement {
         background: rgba(158,158,158,0.12); color: var(--vcc-disabled);
       }
       .header-badge[data-action="charge"]    { background: rgba(76,175,80,0.12);  color: var(--vcc-success); }
+      .header-badge[data-action="pv_charge"] { background: rgba(255,183,77,0.12); color: var(--vcc-pv-charge); }
       .header-badge[data-action="discharge"] { background: rgba(255,152,0,0.12);  color: var(--vcc-warning); }
       .header-badge[data-feed-in="default"]  { background: rgba(76,175,80,0.12);  color: var(--vcc-success); }
       .header-badge[data-feed-in="reduced"]  { background: rgba(255,152,0,0.12);  color: var(--vcc-warning); }
@@ -2239,6 +2270,12 @@ class VictronChargeControllerCard extends LitElement {
       }
       .plan-bar-group[data-past="true"] {
         cursor: default;
+      }
+      .plan-bar-hit {
+        pointer-events: all;
+      }
+      .plan-pv-column {
+        pointer-events: none;
       }
       .plan-picker-bg {
         filter: drop-shadow(0 1px 2px rgba(0,0,0,0.15));
