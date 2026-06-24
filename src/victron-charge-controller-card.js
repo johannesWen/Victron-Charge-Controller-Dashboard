@@ -1532,7 +1532,7 @@ class VictronChargeControllerCard extends LitElement {
           const costH = padT + plotH - yPos(point.cost);
           const revenueH = padT + plotH - yPos(point.revenue);
           return svg`
-            <g class="cost-bar-group" @click=${() => this._onBarClick('history', i)}>
+            <g class="cost-bar-group" @click=${(e) => this._onBarClick(e, 'history', i)}>
               <rect x="${xCenter - barW - barGap / 2}" y="${yPos(point.cost)}"
                 width="${barW}" height="${Math.max(1, costH)}"
                 fill="var(--vcc-error, #f44336)" opacity="0.72" rx="1.5" />
@@ -1566,6 +1566,7 @@ class VictronChargeControllerCard extends LitElement {
           tx = Math.max(padL, Math.min(tx, chartW - padR - tw));
           const costVal = isEnergy ? this._formatEnergy(point.cost) : this._formatMoney(point.cost);
           const revVal = isEnergy ? this._formatEnergy(point.revenue) : this._formatMoney(point.revenue);
+          const timeLabel = COST_RANGES[range]?.period === 'hour' ? `${point.label}:00` : point.label;
           return svg`
             <g class="cost-bar-tooltip">
               <rect x="${tx}" y="${ty}" width="${tw}" height="${th}" rx="5"
@@ -1573,7 +1574,7 @@ class VictronChargeControllerCard extends LitElement {
                 fill-opacity="0.95"
                 stroke="var(--vcc-border, #e0e0e0)" stroke-width="0.8" />
               <text x="${tx + tw / 2}" y="${ty + 15}" text-anchor="middle"
-                class="cost-tooltip-time">${point.label}</text>
+                class="cost-tooltip-time">${timeLabel}</text>
               <text x="${tx + tw / 2}" y="${ty + 31}" text-anchor="middle"
                 class="cost-tooltip-cost">${costLabel}: ${costVal}</text>
               <text x="${tx + tw / 2}" y="${ty + 47}" text-anchor="middle"
