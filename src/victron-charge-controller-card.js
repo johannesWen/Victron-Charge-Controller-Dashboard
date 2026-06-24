@@ -226,14 +226,15 @@ class VictronChargeControllerCard extends LitElement {
       const blockedDischarging = blockedDischargingHours.includes(hour) || entry.action === 'blocked_discharging' || entry.action === 'blocked';
 
       let displayAction = this._normalizePlanAction(entry.action);
-      if (blockedCharging && blockedDischarging) {
-        displayAction = 'blocked';
-      } else if (hasScheduleSensors && slotKey) {
-        // PV charge takes precedence over plain charge/discharge (matches backend),
-        // and is suppressed by a charging block just like charge.
-        if (pvChargeSlots.has(slotKey) && !blockedCharging) displayAction = 'pv_charge';
-        else if (chargeSlots.has(slotKey) && !blockedCharging) displayAction = 'charge';
-        else if (dischargeSlots.has(slotKey) && !blockedDischarging) displayAction = 'discharge';
+      // Per-day actions take precedence over recurring blocks (user override
+      // via the plan-card picker). The blocked_*_hours flags are still used
+      // for the hatched overlay so the user can see the hour is also blocked.
+      if (hasScheduleSensors && slotKey) {
+        // PV charge takes precedence over plain charge/discharge (matches backend).
+        if (pvChargeSlots.has(slotKey)) displayAction = 'pv_charge';
+        else if (chargeSlots.has(slotKey)) displayAction = 'charge';
+        else if (dischargeSlots.has(slotKey)) displayAction = 'discharge';
+        else if (blockedCharging && blockedDischarging) displayAction = 'blocked';
         else displayAction = 'idle';
       }
 
@@ -336,6 +337,24 @@ class VictronChargeControllerCard extends LitElement {
           .checked=${on}
           @change=${() => this._toggleSwitch(switchKey)}
         ></ha-switch>
+      </div>`;
+  }
+
+  _renderTogglePair(items) {
+    return html`
+      <div class="control-row toggle-pair">
+        ${items.map(({ label, key }) => {
+          const on = this._val('switch', key) === 'on';
+          return html`
+            <div class="toggle-pair-item">
+              <span class="control-label">${label}</span>
+              <ha-switch
+                .checked=${on}
+                @change=${() => this._toggleSwitch(key)}
+              ></ha-switch>
+            </div>
+          `;
+        })}
       </div>`;
   }
 
@@ -482,6 +501,14 @@ class VictronChargeControllerCard extends LitElement {
     pt.y = clientY;
     const svgPt = pt.matrixTransform(svgEl.getScreenCTM().inverse());
     return svgPt.y;
+  }
+
+  _clientToSvgPoint(clientX, clientY, svgEl) {
+    const pt = svgEl.createSVGPoint();
+    pt.x = clientX;
+    pt.y = clientY;
+    const svgPt = pt.matrixTransform(svgEl.getScreenCTM().inverse());
+    return { x: svgPt.x, y: svgPt.y };
   }
 
   _addThresholdDragListeners() {
@@ -665,10 +692,13 @@ class VictronChargeControllerCard extends LitElement {
 
       <!-- Charge / Discharge -->
       ${this._renderSection('Charge / Discharge', 'mdi:battery-charging', html`
-        ${this._renderToggle('Charge Allowed', 'charge_allowed')}
-        ${this._renderToggle('Discharge Allowed', 'discharge_allowed')}
+        ${this._renderTogglePair([
+          { label: 'Charge Allowed', key: 'charge_allowed' },
+          { label: 'Discharge Allowed', key: 'discharge_allowed' },
+        ])}
         ${this._renderSlider('Charge Power', 'charge_power', ' W')}
         ${this._renderSlider('Discharge Power', 'discharge_power', ' W')}
+        ${this._renderSlider('PV Charging Battery Share', 'pv_charging_battery_share', ' %')}
       `)}
 
       <!-- Battery Limits -->
@@ -1017,10 +1047,19 @@ class VictronChargeControllerCard extends LitElement {
           const totalBtnW = btnW * buttons.length + gap * (buttons.length - 1);
           const pw = Math.max(168, totalBtnW + 16);
           const ph = 70;
-          let py = barTop - ph - 8;
-          if (py < 2) py = Math.max(barTopY, barBaseY) + 8;
-          let px = barCenterX - pw / 2;
+          let px;
+          let py;
+          if (this._pickerBar.anchorX != null && this._pickerBar.anchorY != null && this._pickerBar.svgEl) {
+            const anchor = this._clientToSvgPoint(this._pickerBar.anchorX, this._pickerBar.anchorY, this._pickerBar.svgEl);
+            px = anchor.x - pw / 2;
+            py = anchor.y - ph / 2;
+          } else {
+            py = barTop - ph - 8;
+            if (py < 2) py = Math.max(barTopY, barBaseY) + 8;
+            px = barCenterX - pw / 2;
+          }
           px = Math.max(padL, Math.min(px, chartW - padR - pw));
+          py = Math.max(2, Math.min(py, chartH - ph - 2));
           const btnY = py + 30;
           const btnStartX = px + (pw - totalBtnW) / 2;
           return svg`
@@ -1094,7 +1133,8 @@ class VictronChargeControllerCard extends LitElement {
     e.stopPropagation();
     const group = e.currentTarget;
     if (group?.dataset?.past === 'true') return;
-    this._openPicker(chartId, index);
+    const svgEl = group?.closest('svg') || null;
+    this._openPicker(chartId, index, e.clientX, e.clientY, svgEl);
   }
 
   _onBarPointerDown(e, chartId, index) {
@@ -1104,10 +1144,12 @@ class VictronChargeControllerCard extends LitElement {
     this._barLongPressFired = false;
     if (this._barHoldTimer) clearTimeout(this._barHoldTimer);
     this._barHoldStart = { x: e.clientX, y: e.clientY };
+    const svgEl = group?.closest('svg') || null;
     this._barHoldTimer = setTimeout(() => {
       this._barHoldTimer = null;
       this._barLongPressFired = true;
-      this._openPicker(chartId, index);
+      const start = this._barHoldStart || { x: e.clientX, y: e.clientY };
+      this._openPicker(chartId, index, start.x, start.y, svgEl);
     }, 500);
   }
 
@@ -1141,8 +1183,8 @@ class VictronChargeControllerCard extends LitElement {
     }
   }
 
-  _openPicker(chartId, index) {
-    this._pickerBar = { chartId, index };
+  _openPicker(chartId, index, anchorX = null, anchorY = null, svgEl = null) {
+    this._pickerBar = { chartId, index, anchorX, anchorY, svgEl };
     if (this._tooltipBar) {
       this._tooltipBar = null;
       if (this._tooltipHideTimer) {
@@ -1490,7 +1532,7 @@ class VictronChargeControllerCard extends LitElement {
           const costH = padT + plotH - yPos(point.cost);
           const revenueH = padT + plotH - yPos(point.revenue);
           return svg`
-            <g class="cost-bar-group" @click=${() => this._onBarClick('history', i)}>
+            <g class="cost-bar-group" @click=${(e) => this._onBarClick(e, 'history', i)}>
               <rect x="${xCenter - barW - barGap / 2}" y="${yPos(point.cost)}"
                 width="${barW}" height="${Math.max(1, costH)}"
                 fill="var(--vcc-error, #f44336)" opacity="0.72" rx="1.5" />
@@ -1524,6 +1566,7 @@ class VictronChargeControllerCard extends LitElement {
           tx = Math.max(padL, Math.min(tx, chartW - padR - tw));
           const costVal = isEnergy ? this._formatEnergy(point.cost) : this._formatMoney(point.cost);
           const revVal = isEnergy ? this._formatEnergy(point.revenue) : this._formatMoney(point.revenue);
+          const timeLabel = COST_RANGES[range]?.period === 'hour' ? `${point.label}:00` : point.label;
           return svg`
             <g class="cost-bar-tooltip">
               <rect x="${tx}" y="${ty}" width="${tw}" height="${th}" rx="5"
@@ -1531,7 +1574,7 @@ class VictronChargeControllerCard extends LitElement {
                 fill-opacity="0.95"
                 stroke="var(--vcc-border, #e0e0e0)" stroke-width="0.8" />
               <text x="${tx + tw / 2}" y="${ty + 15}" text-anchor="middle"
-                class="cost-tooltip-time">${point.label}</text>
+                class="cost-tooltip-time">${timeLabel}</text>
               <text x="${tx + tw / 2}" y="${ty + 31}" text-anchor="middle"
                 class="cost-tooltip-cost">${costLabel}: ${costVal}</text>
               <text x="${tx + tw / 2}" y="${ty + 47}" text-anchor="middle"
@@ -2046,6 +2089,16 @@ class VictronChargeControllerCard extends LitElement {
         width: auto;
       }
       .control-row.toggle-row > .control-label {
+        flex: 1; width: auto; text-align: right;
+      }
+      .control-row.toggle-pair {
+        gap: 16px;
+      }
+      .toggle-pair-item {
+        display: flex; align-items: center; gap: 8px;
+        flex: 1 1 0; min-width: 0;
+      }
+      .toggle-pair-item > .control-label {
         flex: 1; width: auto; text-align: right;
       }
 
