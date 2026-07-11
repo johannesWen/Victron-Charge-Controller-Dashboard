@@ -725,7 +725,10 @@ class VictronChargeControllerCard extends LitElement {
 
       <!-- Grid Feed-in -->
       ${this._renderSection('Grid Feed-in', 'mdi:solar-power', html`
-        ${this._renderToggle('Feed-in Control', 'grid_feed_in_control')}
+        ${this._renderTogglePair([
+          { label: 'Feed-in Control', key: 'grid_feed_in_control' },
+          { label: 'Control DC Coupled Feed In', key: 'control_dc_coupled_feed_in' },
+        ])}
         ${feedIn ? html`
           ${this._renderSlider('Price Threshold', 'grid_feed_in_price_threshold', ' ct/kWh')}
           ${this._renderSlider('Default Max Feed-in', 'default_max_grid_feed_in', ' W')}
